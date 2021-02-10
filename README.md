@@ -39,6 +39,6 @@ TODO
 * [ ] search for ASCII text
 * [ ] search for binary (hex input)
 * [ ] search for numbers
-* [ ] save selection to file
-* [ ] highlight same as selection
+* [x] save selection to file
+* [x] highlight same as selection
 * [ ] choose license (probably GPLv3)

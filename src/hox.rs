@@ -11,15 +11,18 @@ use pancurses_result::{
 
 use crate::mmap::MMap;
 use crate::result::{Result, Error};
-use crate::number_input::{NumberInput, NumberResult};
+use crate::number_input::NumberInput;
+use crate::file_input::FileInput;
 use crate::consts::*;
-use crate::input_widget::InputWidget;
+use crate::input_widget::{InputWidget, WidgetResult};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Endian {
     Big,
     Little,
 }
+
+const FILE_INPUT_LABEL: &str = "Filename: ";
 
 fn put_label(window: &mut Window, text: &str) -> Result<()> {
     let mut slice = text;
@@ -210,6 +213,7 @@ pub struct Hox<'a> {
     selecting: bool,
     matchmap: Vec<bool>,
     offset_input: NumberInput<usize>,
+    file_input: FileInput,
 }
 
 impl<'a> Hox<'a> {
@@ -239,6 +243,7 @@ impl<'a> Hox<'a> {
         let colors = curses.color_mut();
 
         colors.set_color_pair(PAIR_NORMAL             as i16, COLOR_WHITE, COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_INVERTED           as i16, COLOR_BLACK, COLOR_WHITE)?;
         colors.set_color_pair(PAIR_OFFSETS            as i16, 130,         COLOR_BLACK)?;
         colors.set_color_pair(PAIR_NON_ASCII          as i16, 239,         COLOR_BLACK)?;
         colors.set_color_pair(PAIR_CURSOR             as i16, COLOR_WHITE, COLOR_RED)?;
@@ -247,6 +252,7 @@ impl<'a> Hox<'a> {
         colors.set_color_pair(PAIR_INPUT              as i16, COLOR_BLACK, COLOR_WHITE)?;
         colors.set_color_pair(PAIR_INPUT_ERROR        as i16, COLOR_WHITE, COLOR_RED)?;
         colors.set_color_pair(PAIR_MATCH              as i16, COLOR_WHITE, 236)?;
+        colors.set_color_pair(PAIR_AUTO_COMPLETE      as i16, 235,         COLOR_BLACK)?;
         
         Ok(Self {
             mmap,
@@ -267,6 +273,7 @@ impl<'a> Hox<'a> {
             selecting: false,
             matchmap: Vec::new(),
             offset_input: NumberInput::<usize>::new(14),
+            file_input: FileInput::new(0),
         })
     }
 
@@ -354,7 +361,7 @@ impl<'a> Hox<'a> {
         if bytes_per_row == 0 || self.win_size.rows < 8 {
             window.move_to((0, 0))?;
             // ignore over long line errors:
-            let _ = window.put_str("Window too small!");
+            let _ = window.put_str("Window\ntoo\nsmall!");
         } else {
             let mem = self.mmap.mem();
             let size = mem.len();
@@ -629,7 +636,7 @@ impl<'a> Hox<'a> {
                 Endian::Little => "[ Little &Endian ]",
                 Endian::Big    => "[  Big &Endian   ]",
             });
-            
+
             buf.push_str(
                 if self.signed { "  [  S&igned  ]" }
                 else           { "  [ Uns&igned ]" }
@@ -639,6 +646,16 @@ impl<'a> Hox<'a> {
 
             // ignore over long line errors here
             let _ = put_label(window, buf);
+
+            window.move_to((self.win_size.rows - 7, 0))?;
+            if self.file_input.has_focus() {
+                window.put_str(FILE_INPUT_LABEL)?;
+                self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+            } else {
+                for _ in 0..self.win_size.columns {
+                    window.put_char(' ')?;
+                }
+            }
         }
 
         Ok(())
@@ -647,6 +664,12 @@ impl<'a> Hox<'a> {
     fn resize(&mut self) -> Result<()> {
         let window = self.curses.window_mut();
         let win_size = window.size();
+
+        let label_len =FILE_INPUT_LABEL.len() as i32;
+        self.file_input.resize(&Dimension {
+            columns: if win_size.columns > label_len { win_size.columns - label_len } else { 0 },
+            rows: win_size.rows,
+        })?;
 
         if win_size.rows != self.win_size.rows || win_size.columns != self.win_size.columns {
             window.clear()?;
@@ -796,7 +819,8 @@ impl<'a> Hox<'a> {
                 // TODO: search ASCII
             },
             Input::Character('w') => {
-                // TODO: write selection to file
+                self.file_input.focus("")?;
+                self.need_redraw = true;
             },
             Input::Character('q') => return Ok(false),
             _input => {
@@ -817,20 +841,50 @@ impl<'a> Hox<'a> {
             }
 
             if let Some(input) = self.curses.window_mut().read_char() {
-                if self.offset_input.has_focus() {
-                    match self.offset_input.handle(input)? {
-                        NumberResult::PropagateEvent => {
+                if self.file_input.has_focus() {
+                    match self.file_input.handle(input)? {
+                        WidgetResult::PropagateEvent => {
                             if !self.handle(input)? {
                                 break;
                             }
                         },
-                        NumberResult::Redraw => {
+                        WidgetResult::Redraw => {
                             self.need_redraw = true;
                         },
-                        NumberResult::SetValue(value) => {
+                        WidgetResult::Value(path) => {
+                            // TODO: error handling
+                            self.need_redraw = true;
+                            match File::create(path) {
+                                Ok(mut file) => {
+                                    use std::io::Write;
+
+                                    let data = &self.mmap.mem()[self.selection_start..self.selection_end];
+
+                                    if let Err(error) = file.write_all(data) {
+                                        eprintln!("{}", error);
+                                    }
+                                }
+                                Err(error) => {
+                                    eprintln!("{}", error);
+                                }
+                            }
+                        },
+                        WidgetResult::Ignore => {},
+                    }
+                } else if self.offset_input.has_focus() {
+                    match self.offset_input.handle(input)? {
+                        WidgetResult::PropagateEvent => {
+                            if !self.handle(input)? {
+                                break;
+                            }
+                        },
+                        WidgetResult::Redraw => {
+                            self.need_redraw = true;
+                        },
+                        WidgetResult::Value(value) => {
                             self.set_cursor(value);
                         },
-                        NumberResult::Ignore => {},
+                        WidgetResult::Ignore => {},
                     }
                 } else {
                     if !self.handle(input)? {

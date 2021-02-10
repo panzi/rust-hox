@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::fmt::Display;
 use std::fmt::Write;
 
-use crate::input_widget::InputWidget;
+use crate::input_widget::{InputWidget, WidgetResult};
 use crate::result::Result;
 use crate::consts::{
     PAIR_NORMAL, PAIR_INPUT, PAIR_INPUT_ERROR, ESC,
@@ -21,15 +21,6 @@ where N: FromStr, N: Display {
     phantom: std::marker::PhantomData<N>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum NumberResult<N>
-where N: FromStr, N: Display {
-    PropagateEvent,
-    Redraw,
-    Ignore,
-    SetValue(N),
-}
-
 impl<N> NumberInput<N>
 where N: FromStr, N: Display {
     pub fn new(size: usize) -> Self {
@@ -40,48 +31,6 @@ where N: FromStr, N: Display {
             error: false,
             phantom: std::marker::PhantomData,
         }
-    }
-
-    pub fn handle(&mut self, input: Input) -> Result<NumberResult<N>> {
-        if !self.focused {
-            return Ok(NumberResult::PropagateEvent);
-        }
-        
-        match input {
-            Input::Character('q') | Input::Character(ESC) => {
-                self.focused = false;
-                return Ok(NumberResult::Redraw);
-            },
-            Input::Character('\n') => {
-                if let Ok(num) = self.buf.parse() {
-                    self.focused = false;
-                    return Ok(NumberResult::SetValue(num));
-                } else {
-                    self.error = true;
-                }
-            },
-            Input::Character('c') | Input::KeyDC => {
-                self.buf.clear();
-                self.error = false;
-            },
-            Input::KeyBackspace => {
-                self.buf.pop();
-                self.error = if self.buf.is_empty() { false }
-                             else { self.buf.parse::<usize>().is_err() };
-            },
-            Input::Character(c) if c >= '0' && c <= '9' && self.buf.len() < 20 => {
-                self.buf.push(c);
-                self.error = self.buf.parse::<N>().is_err();
-            },
-            Input::Character(_) | Input::KeyLeft | Input::KeyRight | Input::KeyUp | Input::KeyDown => {
-                return Ok(NumberResult::Ignore);
-            },
-            _input => {
-                return Ok(NumberResult::PropagateEvent);
-            },
-        }
-
-        Ok(NumberResult::Redraw)
     }
 }
 
@@ -132,5 +81,47 @@ where N: FromStr, N: Display {
         window.turn_off_attributes(col)?;
 
         Ok(())
+    }
+
+    fn handle(&mut self, input: Input) -> Result<WidgetResult<N>> {
+        if !self.focused {
+            return Ok(WidgetResult::PropagateEvent);
+        }
+
+        match input {
+            Input::Character('q') | Input::Character(ESC) => {
+                self.focused = false;
+                return Ok(WidgetResult::Redraw);
+            },
+            Input::Character('\n') => {
+                if let Ok(num) = self.buf.parse() {
+                    self.focused = false;
+                    return Ok(WidgetResult::Value(num));
+                } else {
+                    self.error = true;
+                }
+            },
+            Input::Character('c') | Input::KeyDC => {
+                self.buf.clear();
+                self.error = false;
+            },
+            Input::KeyBackspace => {
+                self.buf.pop();
+                self.error = if self.buf.is_empty() { false }
+                             else { self.buf.parse::<usize>().is_err() };
+            },
+            Input::Character(c) if c >= '0' && c <= '9' && self.buf.len() < 20 => {
+                self.buf.push(c);
+                self.error = self.buf.parse::<N>().is_err();
+            },
+            Input::Character(_) | Input::KeyLeft | Input::KeyRight | Input::KeyUp | Input::KeyDown => {
+                return Ok(WidgetResult::Ignore);
+            },
+            _input => {
+                return Ok(WidgetResult::PropagateEvent);
+            },
+        }
+
+        Ok(WidgetResult::Redraw)
     }
 }
