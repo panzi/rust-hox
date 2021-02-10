@@ -3,6 +3,10 @@ use clap::{Arg, App};
 mod result;
 mod hox;
 mod mmap;
+mod input_widget;
+mod number_input;
+mod file_input;
+mod consts;
 
 use result::{Result, Error};
 use hox::{Hox, Endian};

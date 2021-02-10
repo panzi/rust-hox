@@ -1,30 +1,19 @@
 use std::fs::File;
 use std::fmt::Write;
 use std::cmp::{min, max};
-use std::str::FromStr;
-use std::fmt::Display;
 
 use pancurses_result::{
     initscr, Input, Dimension, Curses, Window,
-    Attribute, ColorPair, CursorVisibility, Point,
+    Attribute, ColorPair, CursorVisibility,
     COLOR_BLACK, COLOR_BLUE, COLOR_CYAN, COLOR_GREEN,
     COLOR_MAGENTA, COLOR_RED, COLOR_WHITE, COLOR_YELLOW,
 };
 
 use crate::mmap::MMap;
 use crate::result::{Result, Error};
-
-const ESC: char = '\u{1b}';
-
-const PAIR_NORMAL:          u8 = 1;
-const PAIR_OFFSETS:         u8 = 2;
-const PAIR_NON_ASCII:       u8 = 3;
-const PAIR_CURSOR:          u8 = 4;
-const PAIR_SELECTION:       u8 = 5;
-const PAIR_SELECTED_CURSOR: u8 = 6;
-const PAIR_INPUT:           u8 = 7;
-const PAIR_INPUT_ERROR:     u8 = 8;
-const PAIR_MATCH:           u8 = 9;
+use crate::number_input::{NumberInput, NumberResult};
+use crate::consts::*;
+use crate::input_widget::InputWidget;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Endian {
@@ -201,149 +190,6 @@ fn hex_len(mut num: usize) -> usize {
 
     len
 }
-
-trait Widget<V> {
-    fn has_focus(&self) -> bool {
-        false
-    }
-
-    fn focus(&mut self, _initial_value: V) -> Result<()> {
-        Ok(())
-    }
-
-    fn blur(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn redraw<P>(&self, _window: &mut Window, _pos: P) -> Result<()>
-    where P: Into<Point>, P: Copy {
-        Ok(())
-    }
-}
-
-struct NumberInput<N>
-where N: FromStr, N: Display {
-    focus: bool,
-    size: usize,
-    buf:  String,
-    error: bool,
-    phantom: std::marker::PhantomData<N>,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum NumberResult<N>
-where N: FromStr, N: Display {
-    PropagateEvent,
-    Redraw,
-    Ignore,
-    SetValue(N),
-}
-
-impl<N> NumberInput<N>
-where N: FromStr, N: Display {
-    fn new(size: usize) -> Self {
-        Self {
-            focus: false,
-            size,
-            buf: String::new(),
-            error: false,
-            phantom: std::marker::PhantomData,
-        }
-    }
-
-    fn handle(&mut self, input: Input) -> Result<NumberResult<N>> {
-        if !self.focus {
-            return Ok(NumberResult::PropagateEvent);
-        }
-        
-        match input {
-            Input::Character('q') | Input::Character(ESC) => {
-                self.focus = false;
-                return Ok(NumberResult::Redraw);
-            },
-            Input::Character('\n') => {
-                if let Ok(num) = self.buf.parse() {
-                    self.focus = false;
-                    return Ok(NumberResult::SetValue(num));
-                } else {
-                    self.error = true;
-                }
-            },
-            Input::Character('c') | Input::KeyDC => {
-                self.buf.clear();
-                self.error = false;
-            },
-            Input::KeyBackspace => {
-                self.buf.pop();
-                self.error = if self.buf.is_empty() { false }
-                             else { self.buf.parse::<usize>().is_err() };
-            },
-            Input::Character(c) if c >= '0' && c <= '9' && self.buf.len() < 20 => {
-                self.buf.push(c);
-                self.error = self.buf.parse::<N>().is_err();
-            },
-            Input::Character(_) | Input::KeyLeft | Input::KeyRight | Input::KeyUp | Input::KeyDown => {
-                return Ok(NumberResult::Ignore);
-            },
-            _input => {
-                return Ok(NumberResult::PropagateEvent);
-            },
-        }
-
-        Ok(NumberResult::Redraw)
-    }
-}
-
-impl<N> Widget<N> for NumberInput<N>
-where N: FromStr, N: Display {
-
-    fn has_focus(&self) -> bool {
-        self.focus
-    }
-
-    fn focus(&mut self, initial_value: N) -> Result<()> {
-        self.focus = true;
-        self.error = false;
-        self.buf.clear();
-        write!(self.buf, "{}", initial_value).unwrap();
-
-        Ok(())
-    }
-
-    fn blur(&mut self) -> Result<()> {
-        self.focus = false;
-
-        Ok(())
-    }
-
-    fn redraw<P>(&self, window: &mut Window, pos: P) -> Result<()>
-    where P: Into<Point>, P: Copy {
-        let buf = &self.buf;
-        window.move_to(pos)?;
-
-        let col = if !self.focus {
-            ColorPair(PAIR_NORMAL)
-        } else if self.error {
-            ColorPair(PAIR_INPUT_ERROR)
-        } else {
-            ColorPair(PAIR_INPUT)
-        };
-        window.turn_on_attributes(col)?;
-        if buf.len() > self.size {
-            if self.size > 3 {
-                window.put_str(format!("...{}", &buf[buf.len() - (self.size - 3)..]))?;
-            } else {
-                window.put_str(&buf[buf.len() - self.size..])?;
-            }
-        } else {
-            window.put_str(format!("{:>1$}", buf, self.size))?;
-        }
-        window.turn_off_attributes(col)?;
-
-        Ok(())
-    }
-}
-
 
 pub struct Hox<'a> {
     mmap: MMap<'a>,
@@ -946,8 +792,11 @@ impl<'a> Hox<'a> {
                 self.offset_input.focus(self.cursor)?;
                 self.need_redraw = true;
             },
-            Input::Character('/') => {
+            Input::Character('f') => {
                 // TODO: search ASCII
+            },
+            Input::Character('w') => {
+                // TODO: write selection to file
             },
             Input::Character('q') => return Ok(false),
             _input => {
