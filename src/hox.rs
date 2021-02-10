@@ -16,14 +16,15 @@ use crate::result::{Result, Error};
 
 const ESC: char = '\u{1b}';
 
-const PAIR_OFFSETS:         u8 = 1;
-const PAIR_NON_ASCII:       u8 = 2;
-const PAIR_CURSOR:          u8 = 3;
-const PAIR_SELECTION:       u8 = 4;
-const PAIR_SELECTED_CURSOR: u8 = 5;
-const PAIR_INPUT:           u8 = 6;
-const PAIR_INPUT_ERROR:     u8 = 7;
-const PAIR_MATCH:           u8 = 8;
+const PAIR_NORMAL:          u8 = 1;
+const PAIR_OFFSETS:         u8 = 2;
+const PAIR_NON_ASCII:       u8 = 3;
+const PAIR_CURSOR:          u8 = 4;
+const PAIR_SELECTION:       u8 = 5;
+const PAIR_SELECTED_CURSOR: u8 = 6;
+const PAIR_INPUT:           u8 = 7;
+const PAIR_INPUT_ERROR:     u8 = 8;
+const PAIR_MATCH:           u8 = 9;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Endian {
@@ -201,6 +202,149 @@ fn hex_len(mut num: usize) -> usize {
     len
 }
 
+trait Widget<V> {
+    fn has_focus(&self) -> bool {
+        false
+    }
+
+    fn focus(&mut self, _initial_value: V) -> Result<()> {
+        Ok(())
+    }
+
+    fn blur(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn redraw<P>(&self, _window: &mut Window, _pos: P) -> Result<()>
+    where P: Into<Point>, P: Copy {
+        Ok(())
+    }
+}
+
+struct NumberInput<N>
+where N: FromStr, N: Display {
+    focus: bool,
+    size: usize,
+    buf:  String,
+    error: bool,
+    phantom: std::marker::PhantomData<N>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum NumberResult<N>
+where N: FromStr, N: Display {
+    PropagateEvent,
+    Redraw,
+    Ignore,
+    SetValue(N),
+}
+
+impl<N> NumberInput<N>
+where N: FromStr, N: Display {
+    fn new(size: usize) -> Self {
+        Self {
+            focus: false,
+            size,
+            buf: String::new(),
+            error: false,
+            phantom: std::marker::PhantomData,
+        }
+    }
+
+    fn handle(&mut self, input: Input) -> Result<NumberResult<N>> {
+        if !self.focus {
+            return Ok(NumberResult::PropagateEvent);
+        }
+        
+        match input {
+            Input::Character('q') | Input::Character(ESC) => {
+                self.focus = false;
+                return Ok(NumberResult::Redraw);
+            },
+            Input::Character('\n') => {
+                if let Ok(num) = self.buf.parse() {
+                    self.focus = false;
+                    return Ok(NumberResult::SetValue(num));
+                } else {
+                    self.error = true;
+                }
+            },
+            Input::Character('c') | Input::KeyDC => {
+                self.buf.clear();
+                self.error = false;
+            },
+            Input::KeyBackspace => {
+                self.buf.pop();
+                self.error = if self.buf.is_empty() { false }
+                             else { self.buf.parse::<usize>().is_err() };
+            },
+            Input::Character(c) if c >= '0' && c <= '9' && self.buf.len() < 20 => {
+                self.buf.push(c);
+                self.error = self.buf.parse::<N>().is_err();
+            },
+            Input::Character(_) | Input::KeyLeft | Input::KeyRight | Input::KeyUp | Input::KeyDown => {
+                return Ok(NumberResult::Ignore);
+            },
+            _input => {
+                return Ok(NumberResult::PropagateEvent);
+            },
+        }
+
+        Ok(NumberResult::Redraw)
+    }
+}
+
+impl<N> Widget<N> for NumberInput<N>
+where N: FromStr, N: Display {
+
+    fn has_focus(&self) -> bool {
+        self.focus
+    }
+
+    fn focus(&mut self, initial_value: N) -> Result<()> {
+        self.focus = true;
+        self.error = false;
+        self.buf.clear();
+        write!(self.buf, "{}", initial_value).unwrap();
+
+        Ok(())
+    }
+
+    fn blur(&mut self) -> Result<()> {
+        self.focus = false;
+
+        Ok(())
+    }
+
+    fn redraw<P>(&self, window: &mut Window, pos: P) -> Result<()>
+    where P: Into<Point>, P: Copy {
+        let buf = &self.buf;
+        window.move_to(pos)?;
+
+        let col = if !self.focus {
+            ColorPair(PAIR_NORMAL)
+        } else if self.error {
+            ColorPair(PAIR_INPUT_ERROR)
+        } else {
+            ColorPair(PAIR_INPUT)
+        };
+        window.turn_on_attributes(col)?;
+        if buf.len() > self.size {
+            if self.size > 3 {
+                window.put_str(format!("...{}", &buf[buf.len() - (self.size - 3)..]))?;
+            } else {
+                window.put_str(&buf[buf.len() - self.size..])?;
+            }
+        } else {
+            window.put_str(format!("{:>1$}", buf, self.size))?;
+        }
+        window.turn_off_attributes(col)?;
+
+        Ok(())
+    }
+}
+
+
 pub struct Hox<'a> {
     mmap: MMap<'a>,
     curses:   Curses,
@@ -219,6 +363,7 @@ pub struct Hox<'a> {
     signed: bool,
     selecting: bool,
     matchmap: Vec<bool>,
+    offset_input: NumberInput<usize>,
 }
 
 impl<'a> Hox<'a> {
@@ -247,6 +392,7 @@ impl<'a> Hox<'a> {
 
         let colors = curses.color_mut();
 
+        colors.set_color_pair(PAIR_NORMAL             as i16, COLOR_WHITE, COLOR_BLACK)?;
         colors.set_color_pair(PAIR_OFFSETS            as i16, 130,         COLOR_BLACK)?;
         colors.set_color_pair(PAIR_NON_ASCII          as i16, 239,         COLOR_BLACK)?;
         colors.set_color_pair(PAIR_CURSOR             as i16, COLOR_WHITE, COLOR_RED)?;
@@ -274,6 +420,7 @@ impl<'a> Hox<'a> {
             signed: false,
             selecting: false,
             matchmap: Vec::new(),
+            offset_input: NumberInput::<usize>::new(14),
         })
     }
 
@@ -345,69 +492,6 @@ impl<'a> Hox<'a> {
         }
     }
 
-    // TODO: improve
-    fn int_input<N, P>(&mut self, old_value: N, pos: P, size: usize) -> Result<N>
-    where N: FromStr, N: Display,
-          P: Into<Point>, P: Copy {
-        let mut error = false;
-        self.buf.clear();
-        write!(self.buf, "{}", old_value).unwrap();
-        self.need_redraw = true;
-
-        loop {
-            let buf = &mut self.buf;
-            let window = self.curses.window_mut();
-            window.move_to(pos)?;
-            let col = if error {
-                ColorPair(PAIR_INPUT_ERROR)
-            } else {
-                ColorPair(PAIR_INPUT)
-            };
-            window.turn_on_attributes(col)?;
-            if buf.len() > size {
-                if size > 3 {
-                    window.put_str(format!("...{}", &buf[buf.len() - (size - 3)..]))?;
-                } else {
-                    window.put_str(&buf[buf.len() - size..])?;
-                }
-            } else {
-                window.put_str(format!("{:>1$}", buf, size))?;
-            }
-            window.turn_off_attributes(col)?;
-
-            let ch = self.curses.window_mut().read_char();
-
-            match ch {
-                Some(Input::Character('q')) | Some(Input::Character(ESC)) => {
-                    return Ok(old_value);
-                },
-                Some(Input::Character('\n')) => {
-                    if let Ok(num) = buf.parse() {
-                        return Ok(num);
-                    } else {
-                        error = true;
-                    }
-                },
-                Some(Input::Character('c')) | Some(Input::KeyDC) => {
-                    buf.clear();
-                    error = false;
-                },
-                Some(Input::KeyBackspace) => {
-                    buf.pop();
-                    error = if buf.is_empty() { false }
-                            else { buf.parse::<usize>().is_err() };
-                },
-                Some(Input::Character(c)) if c >= '0' && c <= '9' && buf.len() < 20 => {
-                    buf.push(c);
-                    error = buf.parse::<N>().is_err();
-                },
-                Some(_input) => {},
-                None => {}
-            }
-        }
-
-    }
-
     fn redraw(&mut self) -> Result<()> {
         // 0001:  00 31[32]20 00 00 11 00 10 10  .12 ......
         //
@@ -445,7 +529,7 @@ impl<'a> Hox<'a> {
                 let end_offset = if end_offset <= size {
                     end_offset
                 } else {
-                    size
+                    size + 1 - needle_len
                 };
 
                 let view_end_offset = min(self.view_offset + self.view_size, size);
@@ -598,7 +682,8 @@ impl<'a> Hox<'a> {
                 line += 1;
             }
 
-            window.move_to((self.win_size.rows - 6, 0))?;
+            let rows = self.win_size.rows;
+            window.move_to((rows - 6, 0))?;
 
             buf.clear();
             write!(buf,
@@ -612,6 +697,10 @@ impl<'a> Hox<'a> {
                 buf.push(' ');
             }
             let _ = put_label(window, &buf[..min(self.win_size.columns as usize, buf.len())]);
+
+            if self.offset_input.has_focus() {
+                self.offset_input.redraw(window, (rows - 6, 11))?;
+            }
 
             window.move_to((self.win_size.rows - 4, 0))?;
 
@@ -760,6 +849,125 @@ impl<'a> Hox<'a> {
         }
     }
 
+    fn handle(&mut self, input: Input) -> Result<bool> {
+        match input {
+            Input::KeyDown => {
+                let cursor = self.cursor + self.bytes_per_row;
+                if cursor < self.mmap.size() {
+                    self.set_cursor(cursor);
+                }
+            },
+            Input::KeyUp => {
+                if self.cursor >= self.bytes_per_row {
+                    self.set_cursor(self.cursor - self.bytes_per_row);
+                }
+            },
+            Input::KeyLeft => {
+                if self.cursor > 0 {
+                    self.set_cursor(self.cursor - 1);
+                }
+            },
+            Input::KeyRight => {
+                self.set_cursor(self.cursor + 1);
+            },
+            Input::KeyHome => {
+                if self.bytes_per_row > 0 {
+                    let cursor = self.cursor - self.cursor % self.bytes_per_row;
+                    self.set_cursor(cursor);
+                }
+            },
+            Input::KeyEnd => {
+                let size = self.mmap.size();
+                if size > 0 && self.bytes_per_row > 0 {
+                    let cursor = min(self.cursor + self.bytes_per_row - self.cursor % self.bytes_per_row , size) - 1;
+                    self.set_cursor(cursor);
+                }
+            },
+            Input::Character('\u{18}') => { // Ctrl+Home
+                if self.cursor != 0 {
+                    self.set_cursor(0);
+                }
+            },
+            Input::Character('\u{13}') => { // Ctrl+End
+                let size = self.mmap.size();
+                if size > 0 {
+                    self.set_cursor(size - 1);
+                }
+            },
+            Input::KeyPPage => {
+                if self.view_offset > 0 {
+                    if self.view_offset >= self.view_size {
+                        let cursor = self.cursor - self.view_size;
+                        self.view_offset -= self.view_size;
+                        self.set_cursor(cursor);
+                    } else {
+                        let cursor = self.cursor - self.view_offset;
+                        self.view_offset = 0;
+                        self.set_cursor(cursor);
+                    }
+                    self.need_redraw = true;
+                }
+            },
+            Input::KeyNPage => {
+                let size = self.mmap.size();
+                if self.view_offset < size && self.view_size <= size {
+                    if self.view_offset + self.view_size < size {
+                        self.view_offset += self.view_size;
+                        if size > 0 {
+                            let cursor = min(self.cursor + self.view_size, size - 1);
+                            self.set_cursor(cursor);
+                        }
+                    } else if self.bytes_per_row > 0 {
+                        self.view_offset = (size + self.bytes_per_row - size % self.bytes_per_row) - self.view_size;
+                        self.view_offset += self.view_offset % self.bytes_per_row;
+                    }
+                    self.need_redraw = true;
+                }
+            },
+            Input::KeyResize => {
+                self.resize()?;
+            },
+            Input::Character('e') => {
+                self.set_endian(match self.endian {
+                    Endian::Big    => Endian::Little,
+                    Endian::Little => Endian::Big,
+                });
+            },
+            Input::Character('i') => {
+                self.set_signed(!self.signed);
+            },
+            Input::Character('s') => {
+                if self.selecting {
+                    self.selecting = false;
+                } else {
+                    self.selection_start = self.cursor;
+                    self.selection_end   = self.cursor + 1;
+                    self.selecting       = true;
+                }
+                self.need_redraw = true;
+            },
+            Input::Character('S') => {
+                self.selecting = false;
+                self.selection_start = 0;
+                self.selection_end   = 0;
+                self.need_redraw = true;
+            },
+            Input::Character('o') => {
+                self.offset_input.focus(self.cursor)?;
+                self.need_redraw = true;
+            },
+            Input::Character('/') => {
+                // TODO: search ASCII
+            },
+            Input::Character('q') => return Ok(false),
+            _input => {
+                //self.curses.window_mut().put_str(format!("INPUT: {:?}\n", input))?;
+            }
+        }
+
+        Ok(true)
+    }
+
     pub fn run(&mut self) -> Result<()> {
         self.resize()?;
 
@@ -769,121 +977,26 @@ impl<'a> Hox<'a> {
                 self.need_redraw = false;
             }
 
-            let ch = self.curses.window_mut().read_char();
-            match ch {
-                None => {},
-                Some(Input::Character('q')) => break,
-                Some(Input::KeyDown) => {
-                    let cursor = self.cursor + self.bytes_per_row;
-                    if cursor < self.mmap.size() {
-                        self.set_cursor(cursor);
-                    }
-                },
-                Some(Input::KeyUp) => {
-                    if self.cursor >= self.bytes_per_row {
-                        self.set_cursor(self.cursor - self.bytes_per_row);
-                    }
-                },
-                Some(Input::KeyLeft) => {
-                    if self.cursor > 0 {
-                        self.set_cursor(self.cursor - 1);
-                    }
-                },
-                Some(Input::KeyRight) => {
-                    self.set_cursor(self.cursor + 1);
-                },
-                Some(Input::KeyHome) => {
-                    if self.bytes_per_row > 0 {
-                        let cursor = self.cursor - self.cursor % self.bytes_per_row;
-                        self.set_cursor(cursor);
-                    }
-                },
-                Some(Input::KeyEnd) => {
-                    let size = self.mmap.size();
-                    if size > 0 && self.bytes_per_row > 0 {
-                        let cursor = min(self.cursor + self.bytes_per_row - self.cursor % self.bytes_per_row , size) - 1;
-                        self.set_cursor(cursor);
-                    }
-                },
-                Some(Input::Character('\u{18}')) => { // Ctrl+Home
-                    if self.cursor != 0 {
-                        self.set_cursor(0);
-                    }
-                },
-                Some(Input::Character('\u{13}')) => { // Ctrl+End
-                    let size = self.mmap.size();
-                    if size > 0 {
-                        self.set_cursor(size - 1);
-                    }
-                },
-                Some(Input::KeyPPage) => {
-                    if self.view_offset > 0 {
-                        if self.view_offset >= self.view_size {
-                            let cursor = self.cursor - self.view_size;
-                            self.view_offset -= self.view_size;
-                            self.set_cursor(cursor);
-                        } else {
-                            let cursor = self.cursor - self.view_offset;
-                            self.view_offset = 0;
-                            self.set_cursor(cursor);
-                        }
-                        self.need_redraw = true;
-                    }
-                },
-                Some(Input::KeyNPage) => {
-                    let size = self.mmap.size();
-                    if self.view_offset < size && self.view_size <= size {
-                        if self.view_offset + self.view_size < size {
-                            self.view_offset += self.view_size;
-                            if size > 0 {
-                                let cursor = min(self.cursor + self.view_size, size - 1);
-                                self.set_cursor(cursor);
+            if let Some(input) = self.curses.window_mut().read_char() {
+                if self.offset_input.has_focus() {
+                    match self.offset_input.handle(input)? {
+                        NumberResult::PropagateEvent => {
+                            if !self.handle(input)? {
+                                break;
                             }
-                        } else if self.bytes_per_row > 0 {
-                            self.view_offset = (size + self.bytes_per_row - size % self.bytes_per_row) - self.view_size;
-                            self.view_offset += self.view_offset % self.bytes_per_row;
-                        }
-                        self.need_redraw = true;
+                        },
+                        NumberResult::Redraw => {
+                            self.need_redraw = true;
+                        },
+                        NumberResult::SetValue(value) => {
+                            self.set_cursor(value);
+                        },
+                        NumberResult::Ignore => {},
                     }
-                },
-                Some(Input::KeyResize) => {
-                    self.resize()?;
-                },
-                Some(Input::Character('e')) => {
-                    self.set_endian(match self.endian {
-                        Endian::Big    => Endian::Little,
-                        Endian::Little => Endian::Big,
-                    });
-                },
-                Some(Input::Character('i')) => {
-                    self.set_signed(!self.signed);
-                },
-                Some(Input::Character('s')) => {
-                    if self.selecting {
-                        self.selecting = false;
-                    } else {
-                        self.selection_start = self.cursor;
-                        self.selection_end   = self.cursor + 1;
-                        self.selecting       = true;
+                } else {
+                    if !self.handle(input)? {
+                        break;
                     }
-                    self.need_redraw = true;
-                },
-                Some(Input::Character('S')) => {
-                    self.selecting = false;
-                    self.selection_start = 0;
-                    self.selection_end   = 0;
-                    self.need_redraw = true;
-                },
-                Some(Input::Character('o')) => {
-                    let pos = (self.win_size.rows - 6, 11); // position of offset value
-                    let cursor = self.int_input(self.cursor, pos, 14)?;
-                    self.set_cursor(cursor);
-                },
-                Some(Input::Character('/')) => {
-                    // TODO: search ASCII
-                },
-                Some(_input) => {
-                    //self.curses.window_mut().put_str(format!("INPUT: {:?}\n", input))?;
                 }
             }
         }
