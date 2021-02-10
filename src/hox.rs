@@ -629,7 +629,8 @@ impl<'a> Hox<'a> {
 
                 window.put_char(' ')?;
                 for byte_offset in row_offset..end_byte_offset {
-                    // TODO: display matching
+                    let match_index = byte_offset - self.view_offset;
+                    let is_match = self.matchmap[match_index];
                     let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
                     let byte = mem[byte_offset];
 
@@ -641,39 +642,28 @@ impl<'a> Hox<'a> {
                         buf.push('.');
                     }
 
-                    if byte_offset == self.cursor {
-                        let attrs = if is_selected {
+                    let attrs = if byte_offset == self.cursor {
+                        if is_selected {
                             ColorPair(PAIR_SELECTED_CURSOR)
                         } else {
                             ColorPair(PAIR_CURSOR)
-                        };
-                        window.turn_on_attributes(attrs)?;
-                        window.put_str(&buf)?;
-                        window.turn_off_attributes(attrs)?;
-
-                        if is_selected && byte_offset + 1 < self.selection_end {
-                            window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
                         }
                     } else {
                         if is_selected {
-                            if byte_offset == row_offset || byte_offset == self.selection_start {
-                                window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
-                            }
+                            ColorPair(PAIR_SELECTION)
+                        } else if is_match {
+                            ColorPair(PAIR_MATCH)
                         } else if !is_ascii {
-                            window.turn_on_attributes(ColorPair(PAIR_NON_ASCII))?;
+                            ColorPair(PAIR_NON_ASCII)
+                        } else {
+                            ColorPair(PAIR_NORMAL)
                         }
+                    };
 
-                        window.put_str(&buf)?;
-
-                        if is_selected {
-                            if byte_offset + 1 >= self.selection_end || byte_offset + 1 == end_byte_offset {
-                                window.turn_off_attributes(ColorPair(PAIR_SELECTION))?;
-                            }
-                        } else if !is_ascii {
-                            window.turn_off_attributes(ColorPair(PAIR_NON_ASCII))?;
-                        }
-                    }
+                    window.turn_on_attributes(attrs)?;
+                    window.put_str(&buf)?;
                 }
+                window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
 
                 for _ in end_byte_offset..overflow_offset {
                     window.put_char(' ')?;
