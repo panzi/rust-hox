@@ -839,7 +839,7 @@ f ... search (not implemented yet)
                 self.file_input.focus("")?;
                 self.need_redraw = true;
             },
-            Input::Character('h') => {
+            Input::Character('h') | Input::KeyF1 => {
                 self.help_box.resize(&self.win_size)?;
                 self.help_shown  = true;
                 self.need_redraw = true;
@@ -862,22 +862,25 @@ f ... search (not implemented yet)
 
             if let Some(input) = self.curses.window_mut().read_char() {
                 if self.help_shown {
-                    if input == Input::Character('h') {
-                        self.help_shown  = false;
-                        self.need_redraw = true;
-                    } else {
-                        match self.help_box.handle(input)? {
-                            TextBoxResult::Redraw => {
-                                self.need_redraw = true;
-                            }
-                            TextBoxResult::Ignore => {}
-                            TextBoxResult::Quit => {
-                                self.help_shown = false;
-                                self.need_redraw = true;
-                            }
-                            TextBoxResult::PropagateEvent => {
-                                if !self.handle(input)? {
-                                    break;
+                    match input {
+                        Input::Character('h') | Input::KeyF1 => {
+                            self.help_shown  = false;
+                            self.need_redraw = true;
+                        }
+                        _input => {
+                            match self.help_box.handle(input)? {
+                                TextBoxResult::Redraw => {
+                                    self.need_redraw = true;
+                                }
+                                TextBoxResult::Ignore => {}
+                                TextBoxResult::Quit => {
+                                    self.help_shown = false;
+                                    self.need_redraw = true;
+                                }
+                                TextBoxResult::PropagateEvent => {
+                                    if !self.handle(input)? {
+                                        break;
+                                    }
                                 }
                             }
                         }
