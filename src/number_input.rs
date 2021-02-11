@@ -1,11 +1,12 @@
 use std::str::FromStr;
 use std::fmt::Display;
 use std::fmt::Write;
+use std::cmp::min;
 
 use crate::input_widget::{InputWidget, WidgetResult};
 use crate::result::Result;
 use crate::consts::{
-    PAIR_NORMAL, PAIR_INPUT, PAIR_INPUT_ERROR, ESC,
+    PAIR_NORMAL, PAIR_INPUT_ERROR, ESC, PAIR_INVERTED,
 };
 
 use pancurses_result::{
@@ -17,6 +18,8 @@ where N: FromStr, N: Display {
     focused: bool,
     size: usize,
     buf:  String,
+    cursor: usize,
+    view_offset: usize,
     error: bool,
     phantom: std::marker::PhantomData<N>,
 }
@@ -28,15 +31,53 @@ where N: FromStr, N: Display {
             focused: false,
             size,
             buf: String::new(),
+            cursor: 0,
+            view_offset: 0,
             error: false,
             phantom: std::marker::PhantomData,
         }
     }
+
+    // since we control the characters that can be in buf we know its ASCII
+    // and these slices are safe
+    fn draw(&self, window: &mut Window, cursor: usize, buf: &str) -> Result<()> {
+        let attrs = if self.error {
+            ColorPair(PAIR_INPUT_ERROR)
+        } else {
+            ColorPair(PAIR_NORMAL)
+        };
+
+        if cursor > 0 {
+            let before = &buf[..cursor];
+            window.turn_on_attributes(attrs)?;
+            window.put_str(before)?;
+            window.turn_off_attributes(attrs)?;
+        }
+
+        if cursor < buf.len() {
+            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+            window.put_str(&buf[cursor..cursor + 1])?;
+            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+        }
+
+        if cursor + 1 < buf.len() {
+            let after = &buf[cursor + 1..];
+            window.turn_on_attributes(attrs)?;
+            window.put_str(after)?;
+            window.turn_off_attributes(attrs)?;
+        } else if cursor >= buf.len() && self.focused {
+            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+            window.put_char(' ')?;
+            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+        }
+
+        Ok(())
+    }
+
 }
 
 impl<N> InputWidget<N> for NumberInput<N>
 where N: FromStr, N: Display {
-
     fn has_focus(&self) -> bool {
         self.focused
     }
@@ -46,6 +87,12 @@ where N: FromStr, N: Display {
         self.error = false;
         self.buf.clear();
         write!(self.buf, "{}", initial_value).unwrap();
+        self.cursor = self.buf.len();
+        if self.cursor > self.size {
+            self.view_offset = self.cursor - self.size;
+        } else {
+            self.view_offset = 0;
+        }
 
         Ok(())
     }
@@ -58,27 +105,56 @@ where N: FromStr, N: Display {
 
     fn redraw<P>(&self, window: &mut Window, pos: P) -> Result<()>
     where P: Into<Point>, P: Copy {
+        if self.size == 0 {
+            return Ok(());
+        }
+
         let buf = &self.buf;
         window.move_to(pos)?;
 
-        let col = if !self.focused {
-            ColorPair(PAIR_NORMAL)
-        } else if self.error {
-            ColorPair(PAIR_INPUT_ERROR)
-        } else {
-            ColorPair(PAIR_INPUT)
-        };
-        window.turn_on_attributes(col)?;
-        if buf.len() > self.size {
-            if self.size > 3 {
-                window.put_str(format!("...{}", &buf[buf.len() - (self.size - 3)..]))?;
+        let mut len = buf.len();
+
+        let cursor_at_end = self.cursor == buf.len();
+        if cursor_at_end && self.focused {
+            len += 1;
+        }
+
+        if len > self.size {
+            if self.view_offset > buf.len() {
+                self.draw(window, 0, "")?;
             } else {
-                window.put_str(&buf[buf.len() - self.size..])?;
+                let mut index = self.view_offset;
+
+                if cursor_at_end {
+                    index += 1;
+                }
+
+                let mut end_index = index + self.size;
+                if cursor_at_end {
+                    end_index -= 1;
+                }
+
+                let buf = &buf[index..min(end_index, buf.len())];
+                let cursor = if self.cursor >= index {
+                    self.cursor - index
+                } else {
+                    0
+                };
+                self.draw(window, cursor, buf)?;
             }
         } else {
-            window.put_str(format!("{:>1$}", buf, self.size))?;
+            let attrs = if self.error {
+                ColorPair(PAIR_INPUT_ERROR)
+            } else {
+                ColorPair(PAIR_NORMAL)
+            };
+            window.turn_on_attributes(attrs)?;
+            for _ in 0..(self.size - len) {
+                window.put_char(' ')?;
+            }
+            window.turn_off_attributes(attrs)?;
+            self.draw(window, self.cursor, &buf)?;
         }
-        window.turn_off_attributes(col)?;
 
         Ok(())
     }
@@ -89,34 +165,87 @@ where N: FromStr, N: Display {
         }
 
         match input {
+            Input::Character(ch) if ((ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E') && self.buf.len() < 20 => {
+                self.buf.insert(self.cursor, ch);
+                self.error = self.buf.parse::<N>().is_err();
+                self.cursor += 1;
+                if self.cursor > self.size {
+                    self.view_offset = self.cursor - self.size;
+                }
+                return Ok(WidgetResult::Redraw);
+            }
+            Input::Character('x') => {
+                self.buf.clear();
+                self.cursor = 0;
+                self.view_offset = 0;
+                self.error = false;
+            }
+            Input::KeyHome => {
+                self.cursor = 0;
+                self.view_offset = 0;
+                return Ok(WidgetResult::Redraw);
+            }
+            Input::KeyEnd => {
+                self.cursor = self.buf.len();
+                if self.cursor > self.size {
+                    self.view_offset = self.cursor - self.size;
+                }
+                return Ok(WidgetResult::Redraw);
+            }
+            Input::KeyLeft => {
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                    if self.cursor < self.view_offset {
+                        self.view_offset = self.cursor;
+                    }
+                    return Ok(WidgetResult::Redraw);
+                }
+            }
+            Input::KeyRight => {
+                if self.cursor < self.buf.len() {
+                    self.cursor += 1;
+                    if self.cursor > self.size {
+                        self.view_offset = self.cursor - self.size;
+                    }
+                    return Ok(WidgetResult::Redraw);
+                }
+            }
+            Input::KeyDC => {
+                if self.cursor < self.buf.len() {
+                    self.buf.remove(self.cursor);
+                    self.error = if self.buf.is_empty() { false }
+                                 else { self.buf.parse::<usize>().is_err() };
+                    return Ok(WidgetResult::Redraw);
+                }
+            }
+            Input::KeyBackspace => {
+                if self.cursor > 0 {
+                    self.buf.remove(self.cursor - 1);
+                    self.cursor -= 1;
+                    if self.view_offset > 0 {
+                        self.view_offset -= 1;
+                    }
+                    self.error = if self.buf.is_empty() { false }
+                                 else { self.buf.parse::<usize>().is_err() };
+                    return Ok(WidgetResult::Redraw);
+                }
+            }
             Input::Character('q') | Input::Character(ESC) => {
                 self.focused = false;
                 return Ok(WidgetResult::Redraw);
-            },
+            }
             Input::Character('\n') => {
                 if let Ok(num) = self.buf.parse() {
                     self.focused = false;
+                    self.error = false;
                     return Ok(WidgetResult::Value(num));
                 } else {
                     self.error = true;
                 }
-            },
-            Input::Character('c') | Input::KeyDC => {
-                self.buf.clear();
-                self.error = false;
-            },
-            Input::KeyBackspace => {
-                self.buf.pop();
-                self.error = if self.buf.is_empty() { false }
-                             else { self.buf.parse::<usize>().is_err() };
-            },
-            Input::Character(c) if c >= '0' && c <= '9' && self.buf.len() < 20 => {
-                self.buf.push(c);
-                self.error = self.buf.parse::<N>().is_err();
-            },
-            Input::Character(_) | Input::KeyLeft | Input::KeyRight | Input::KeyUp | Input::KeyDown => {
+            }
+            Input::KeyUp | Input::KeyDown => {
                 return Ok(WidgetResult::Ignore);
-            },
+            }
             _input => {
                 return Ok(WidgetResult::PropagateEvent);
             },

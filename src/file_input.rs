@@ -1,5 +1,6 @@
 use std::path::{PathBuf};
 use std::ffi::OsStr;
+use std::cmp::min;
 
 use pancurses_result::{Window, Point, Input, ColorPair, Dimension};
 
@@ -29,44 +30,58 @@ impl FileInput {
     }
 
     fn draw(&self, window: &mut Window, cursor: usize, buf: &[char], compl: &[char]) -> Result<()> {
-        if cursor > 0 {
-            let before: String = (&buf[..cursor]).iter().collect();
-            window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
-            window.put_str(before)?;
-            window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
-        }
+        if self.focused {
+            if cursor > 0 {
+                let before: String = (&buf[..cursor]).iter().collect();
+                window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+                window.put_str(before)?;
+                window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
+            }
 
-        if cursor < buf.len() {
-            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-            window.put_char(buf[cursor])?;
-            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
-        }
+            if cursor < buf.len() {
+                window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+                window.put_char(buf[cursor])?;
+                window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+            }
 
-        if cursor + 1 < buf.len() {
-            let after: String = (&buf[cursor + 1..]).into_iter().collect();
-            window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
-            window.put_str(after)?;
-            window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
+            if cursor + 1 < buf.len() {
+                let after: String = (&buf[cursor + 1..]).into_iter().collect();
+                window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+                window.put_str(after)?;
+                window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
 
-            if compl.len() > 0 {
+                if compl.len() > 1 {
+                    let compl: String = (&compl[1..]).into_iter().collect();
+                    window.turn_on_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
+                    window.put_str(compl)?;
+                    window.turn_off_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
+                }
+            } else if compl.len() > 0 {
+                window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+                window.put_char(compl[0])?;
+                window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+
                 let compl: String = (&compl[1..]).into_iter().collect();
                 window.turn_on_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
                 window.put_str(compl)?;
                 window.turn_off_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
+            } else if cursor >= buf.len() {
+                window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+                window.put_char(' ')?;
+                window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
             }
-        } else if compl.len() > 0 {
-            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-            window.put_char(compl[0])?;
-            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+        } else {
+            let buf: String = buf.into_iter().collect();
+            window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+            window.put_str(buf)?;
+            window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
 
-            let compl: String = (&compl[1..]).into_iter().collect();
-            window.turn_on_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
-            window.put_str(compl)?;
-            window.turn_off_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
-        } else if cursor >= buf.len() {
-            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-            window.put_char(' ')?;
-            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+            if compl.len() > 0 {
+                let compl: String = compl.into_iter().collect();
+                window.turn_on_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
+                window.put_str(compl)?;
+                window.turn_off_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
+            }
         }
 
         Ok(())
@@ -186,7 +201,7 @@ impl InputWidget<&str, PathBuf> for FileInput {
         let mut len = buf.len() + compl.len();
 
         let cursor_at_end = self.cursor == buf.len();
-        if cursor_at_end && compl.len() == 0 {
+        if cursor_at_end && compl.len() == 0 && self.focused {
             len += 1;
         }
 
@@ -199,12 +214,18 @@ impl InputWidget<&str, PathBuf> for FileInput {
                 };
                 self.draw(window, 0, &[], compl)?;
             } else {
-                let index = if cursor_at_end {
-                    self.view_offset + 1
-                } else {
-                    self.view_offset
-                };
-                let buf = &buf[index..];
+                let mut index = self.view_offset;
+
+                if cursor_at_end {
+                    index += 1;
+                }
+
+                let mut end_index = index + self.size;
+                if cursor_at_end {
+                    end_index -= 1;
+                }
+                let buf = &buf[index..min(end_index, buf.len())];
+
                 let cursor = if self.cursor >= index {
                     self.cursor - index
                 } else {
@@ -241,17 +262,6 @@ impl InputWidget<&str, PathBuf> for FileInput {
         }
 
         match input {
-            Input::Character(ESC) => {
-                self.focused = false;
-                return Ok(WidgetResult::Redraw);
-            }
-            Input::Character('\n') => {
-                if self.buf.is_empty() {
-                    return Ok(WidgetResult::Ignore);
-                }
-                self.focused = false;
-                return Ok(WidgetResult::Value(PathBuf::from(self.buf.iter().collect::<String>())))
-            }
             Input::Character('\t') => {
                 self.buf.extend_from_slice(&self.autocomplete);
                 self.cursor = self.buf.len();
@@ -290,6 +300,17 @@ impl InputWidget<&str, PathBuf> for FileInput {
                     }
                     return Ok(WidgetResult::Redraw);
                 }
+            }
+            Input::Character(ESC) => {
+                self.focused = false;
+                return Ok(WidgetResult::Redraw);
+            }
+            Input::Character('\n') => {
+                if self.buf.is_empty() {
+                    return Ok(WidgetResult::Ignore);
+                }
+                self.focused = false;
+                return Ok(WidgetResult::Value(PathBuf::from(self.buf.iter().collect::<String>())))
             }
             Input::Character(ch) => {
                 self.buf.insert(self.cursor, ch);

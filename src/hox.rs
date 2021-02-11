@@ -249,7 +249,6 @@ impl<'a> Hox<'a> {
         colors.set_color_pair(PAIR_CURSOR             as i16, COLOR_WHITE, COLOR_RED)?;
         colors.set_color_pair(PAIR_SELECTION          as i16, COLOR_BLACK, COLOR_BLUE)?;
         colors.set_color_pair(PAIR_SELECTED_CURSOR    as i16, COLOR_WHITE, 128)?;
-        colors.set_color_pair(PAIR_INPUT              as i16, COLOR_BLACK, COLOR_WHITE)?;
         colors.set_color_pair(PAIR_INPUT_ERROR        as i16, COLOR_WHITE, COLOR_RED)?;
         colors.set_color_pair(PAIR_MATCH              as i16, COLOR_WHITE, 236)?;
         colors.set_color_pair(PAIR_AUTO_COMPLETE      as i16, 235,         COLOR_BLACK)?;
@@ -272,21 +271,9 @@ impl<'a> Hox<'a> {
             signed: false,
             selecting: false,
             matchmap: Vec::new(),
-            offset_input: NumberInput::<usize>::new(14),
+            offset_input: NumberInput::<usize>::new(16),
             file_input: FileInput::new(0),
         })
-    }
-
-    pub fn signed(&self) -> bool {
-        self.signed
-    }
-
-    pub fn endian(&self) -> Endian {
-        self.endian
-    }
-
-    pub fn cursor(&self) -> usize {
-        self.cursor
     }
 
     pub fn set_signed(&mut self, signed: bool) {
@@ -542,7 +529,7 @@ impl<'a> Hox<'a> {
             let _ = put_label(window, &buf[..min(self.win_size.columns as usize, buf.len())]);
 
             if self.offset_input.has_focus() {
-                self.offset_input.redraw(window, (rows - 6, 11))?;
+                self.offset_input.redraw(window, (rows - 6, 10))?;
             }
 
             window.move_to((self.win_size.rows - 4, 0))?;

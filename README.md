@@ -42,4 +42,5 @@ TODO
 * [x] save selection to file
 * [ ] display errors invlolving the above
 * [x] highlight same as selection
+* [ ] help pop-up
 * [ ] choose license (probably GPLv3)
