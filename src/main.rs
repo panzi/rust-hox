@@ -6,6 +6,7 @@ mod mmap;
 mod input_widget;
 mod number_input;
 mod file_input;
+mod text_box;
 mod consts;
 
 use result::{Result, Error};

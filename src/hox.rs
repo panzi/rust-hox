@@ -13,6 +13,7 @@ use crate::mmap::MMap;
 use crate::result::{Result, Error};
 use crate::number_input::NumberInput;
 use crate::file_input::FileInput;
+use crate::text_box::{TextBox, TextBoxResult};
 use crate::consts::*;
 use crate::input_widget::{InputWidget, WidgetResult};
 
@@ -214,6 +215,8 @@ pub struct Hox<'a> {
     matchmap: Vec<bool>,
     offset_input: NumberInput<usize>,
     file_input: FileInput,
+    help_box: TextBox<'a>,
+    help_shown: bool,
 }
 
 impl<'a> Hox<'a> {
@@ -273,6 +276,24 @@ impl<'a> Hox<'a> {
             matchmap: Vec::new(),
             offset_input: NumberInput::<usize>::new(16),
             file_input: FileInput::new(0),
+            help_box: TextBox::new("\
+Shortcuts
+═════════
+
+h ... show this help message
+q ... quit
+e ... toggle between big and little endian
+i ... toggle between signed and unsinged
+o ... enter offset to jump to
+s ... toggle select mode
+S ... clear selection
+w ... write selection to file
+f ... search (not implemented yet)
+
+
+© 2021 Mathias Panzenböck", 2, 1,
+            ),
+            help_shown: false,
         })
     }
 
@@ -349,300 +370,305 @@ impl<'a> Hox<'a> {
             window.move_to((0, 0))?;
             // ignore over long line errors:
             let _ = window.put_str("Window\ntoo\nsmall!");
-        } else {
-            let mem = self.mmap.mem();
-            let size = mem.len();
+            return Ok(());
+        }
 
-            // TODO: do this on selection and viewport change, not on render?
-            for item in self.matchmap.iter_mut() {
-                *item = false;
-            }
-            if self.selection_start < self.selection_end {
-                let needle = &mem[self.selection_start..self.selection_end];
-                let needle_len = needle.len();
-                let start_offset = if self.view_offset > (needle_len - 1) {
-                    self.view_offset + 1 - needle_len
-                } else {
-                    0
-                };
-                let end_offset = self.view_offset + self.view_size + needle_len - 1;
-                let end_offset = if end_offset <= size {
-                    end_offset
-                } else {
-                    size + 1 - needle_len
-                };
+        let mem = self.mmap.mem();
+        let size = mem.len();
 
-                let view_end_offset = min(self.view_offset + self.view_size, size);
-                for offset in start_offset..end_offset {
-                    if &mem[offset..offset + needle_len] == needle {
-                        for match_offset in max(self.view_offset, offset)..min(view_end_offset, offset + needle_len) {
-                            self.matchmap[match_offset - self.view_offset] = true;
-                        }
-                    }
-                }
-            }
+        // TODO: do this on selection and viewport change, not on render?
+        for item in self.matchmap.iter_mut() {
+            *item = false;
+        }
+        if self.selection_start < self.selection_end {
+            let needle = &mem[self.selection_start..self.selection_end];
+            let needle_len = needle.len();
+            let start_offset = if self.view_offset > (needle_len - 1) {
+                self.view_offset + 1 - needle_len
+            } else {
+                0
+            };
+            let end_offset = self.view_offset + self.view_size + needle_len - 1;
+            let end_offset = if end_offset <= size {
+                end_offset
+            } else {
+                size + 1 - needle_len
+            };
 
             let view_end_offset = min(self.view_offset + self.view_size, size);
+            for offset in start_offset..end_offset {
+                if &mem[offset..offset + needle_len] == needle {
+                    for match_offset in max(self.view_offset, offset)..min(view_end_offset, offset + needle_len) {
+                        self.matchmap[match_offset - self.view_offset] = true;
+                    }
+                }
+            }
+        }
 
-            // TODO: auto search selection
-            let buf = &mut self.buf;
-            let mut line = 0;
-            for row_offset in (self.view_offset..view_end_offset).step_by(self.bytes_per_row) {
+        let view_end_offset = min(self.view_offset + self.view_size, size);
+
+        // TODO: auto search selection
+        let buf = &mut self.buf;
+        let mut line = 0;
+        for row_offset in (self.view_offset..view_end_offset).step_by(self.bytes_per_row) {
+            buf.clear();
+            write!(buf, "{:01$X}:", row_offset, self.offset_hex_len)?;
+            
+            window.move_to((line, 0))?;
+            window.turn_on_attributes(ColorPair(PAIR_OFFSETS))?;
+            window.put_str(&buf)?;
+            window.turn_off_attributes(ColorPair(PAIR_OFFSETS))?;
+
+            window.put_str("  ")?;
+
+            let overflow_offset = row_offset + self.bytes_per_row;
+            let end_byte_offset = min(overflow_offset, size);
+
+            for byte_offset in row_offset..end_byte_offset {
+                let match_index = byte_offset - self.view_offset;
+                let is_match = self.matchmap[match_index];
+                let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
+
+                let byte = mem[byte_offset];
                 buf.clear();
-                write!(buf, "{:01$X}:", row_offset, self.offset_hex_len)?;
-                
-                window.move_to((line, 0))?;
-                window.turn_on_attributes(ColorPair(PAIR_OFFSETS))?;
-                window.put_str(&buf)?;
-                window.turn_off_attributes(ColorPair(PAIR_OFFSETS))?;
+                write!(buf, "{:02X}", byte)?;
 
-                window.put_str("  ")?;
-
-                let overflow_offset = row_offset + self.bytes_per_row;
-                let end_byte_offset = min(overflow_offset, size);
-
-                for byte_offset in row_offset..end_byte_offset {
-                    let match_index = byte_offset - self.view_offset;
-                    let is_match = self.matchmap[match_index];
-                    let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
-
-                    let byte = mem[byte_offset];
-                    buf.clear();
-                    write!(buf, "{:02X}", byte)?;
-
-                    if byte_offset == self.cursor {
-                        let attrs = if is_selected {
-                            ColorPair(PAIR_SELECTED_CURSOR)
-                        } else {
-                            ColorPair(PAIR_CURSOR)
-                        };
-                        window.turn_on_attributes(attrs)?;
-                        window.put_str(&buf)?;
-                        window.turn_off_attributes(attrs)?;
-
-                        if is_selected {
-                            if byte_offset + 1 < self.selection_end {
-                                window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
-                            } else if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
-                                window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                            }
-                        } else if is_match {
-                            if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
-                                window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                            }
-                        }
+                if byte_offset == self.cursor {
+                    let attrs = if is_selected {
+                        ColorPair(PAIR_SELECTED_CURSOR)
                     } else {
-                        if is_selected {
-                            if byte_offset == row_offset || byte_offset == self.selection_start {
-                                window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
-                            }
-                        } else if is_match {
-                            if byte_offset == row_offset || match_index == 0 || !self.matchmap[match_index - 1] {
-                                window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                            }
-                        }
-
-                        window.put_str(&buf)?;
-
-                        if byte_offset + 1 >= self.selection_end || byte_offset + 1 == end_byte_offset {
-                            if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
-                                if is_match {
-                                    window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                                }
-                            } else if is_selected {
-                                window.turn_off_attributes(ColorPair(PAIR_SELECTION))?;
-                            } else if is_match {
-                                window.turn_off_attributes(ColorPair(PAIR_MATCH))?;
-                            }
-                        } else if byte_offset + 1 >= end_byte_offset || !self.matchmap[match_index + 1] {
-                            if is_match {
-                                window.turn_off_attributes(ColorPair(PAIR_MATCH))?;
-                            }
-                        }
-                    }
-                    window.put_char(' ')?;
-                }
-
-                for _ in end_byte_offset..overflow_offset {
-                    window.put_str("   ")?;
-                }
-
-                window.put_char(' ')?;
-                for byte_offset in row_offset..end_byte_offset {
-                    let match_index = byte_offset - self.view_offset;
-                    let is_match = self.matchmap[match_index];
-                    let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
-                    let byte = mem[byte_offset];
-
-                    buf.clear();
-                    let is_ascii = byte >= 0x20 && byte <= 0x7e;
-                    if is_ascii {
-                        buf.push(byte as char);
-                    } else {
-                        buf.push('.');
-                    }
-
-                    let attrs = if byte_offset == self.cursor {
-                        if is_selected {
-                            ColorPair(PAIR_SELECTED_CURSOR)
-                        } else {
-                            ColorPair(PAIR_CURSOR)
-                        }
-                    } else {
-                        if is_selected {
-                            ColorPair(PAIR_SELECTION)
-                        } else if is_match {
-                            ColorPair(PAIR_MATCH)
-                        } else if !is_ascii {
-                            ColorPair(PAIR_NON_ASCII)
-                        } else {
-                            ColorPair(PAIR_NORMAL)
-                        }
+                        ColorPair(PAIR_CURSOR)
                     };
-
                     window.turn_on_attributes(attrs)?;
                     window.put_str(&buf)?;
-                }
-                window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+                    window.turn_off_attributes(attrs)?;
 
-                for _ in end_byte_offset..overflow_offset {
-                    window.put_char(' ')?;
-                }
+                    if is_selected {
+                        if byte_offset + 1 < self.selection_end {
+                            window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
+                        } else if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
+                            window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
+                        }
+                    } else if is_match {
+                        if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
+                            window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
+                        }
+                    }
+                } else {
+                    if is_selected {
+                        if byte_offset == row_offset || byte_offset == self.selection_start {
+                            window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
+                        }
+                    } else if is_match {
+                        if byte_offset == row_offset || match_index == 0 || !self.matchmap[match_index - 1] {
+                            window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
+                        }
+                    }
 
-                line += 1;
+                    window.put_str(&buf)?;
+
+                    if byte_offset + 1 >= self.selection_end || byte_offset + 1 == end_byte_offset {
+                        if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
+                            if is_match {
+                                window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
+                            }
+                        } else if is_selected {
+                            window.turn_off_attributes(ColorPair(PAIR_SELECTION))?;
+                        } else if is_match {
+                            window.turn_off_attributes(ColorPair(PAIR_MATCH))?;
+                        }
+                    } else if byte_offset + 1 >= end_byte_offset || !self.matchmap[match_index + 1] {
+                        if is_match {
+                            window.turn_off_attributes(ColorPair(PAIR_MATCH))?;
+                        }
+                    }
+                }
+                window.put_char(' ')?;
             }
 
-            let rows = self.win_size.rows;
-            window.move_to((rows - 6, 0))?;
-
-            buf.clear();
-            write!(buf,
-                " &Offset: [ {:>14} ]  &Selection: {} - {}",
-                self.cursor, self.selection_start, self.selection_end)?;
-            if self.selecting {
-                buf.push_str(" selecting");
-            }
-            // 2 & marks
-            while buf.len() < self.win_size.columns as usize + 2 {
-                buf.push(' ');
-            }
-            let _ = put_label(window, &buf[..min(self.win_size.columns as usize, buf.len())]);
-
-            if self.offset_input.has_focus() {
-                self.offset_input.redraw(window, (rows - 6, 10))?;
+            for _ in end_byte_offset..overflow_offset {
+                window.put_str("   ")?;
             }
 
-            window.move_to((self.win_size.rows - 4, 0))?;
+            window.put_char(' ')?;
+            for byte_offset in row_offset..end_byte_offset {
+                let match_index = byte_offset - self.view_offset;
+                let is_match = self.matchmap[match_index];
+                let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
+                let byte = mem[byte_offset];
 
-            buf.clear();
-            if self.signed {
-                if let Some(num) = get_i8(mem, self.cursor) {
-                    write!(buf, " int  8: {:>6}  ", num)?;
+                buf.clear();
+                let is_ascii = byte >= 0x20 && byte <= 0x7e;
+                if is_ascii {
+                    buf.push(byte as char);
                 } else {
-                    buf.push_str(" int  8:         ");
+                    buf.push('.');
                 }
 
-                if let Some(num) = get_i32(mem, self.cursor, self.endian) {
-                    write!(buf, "int 32: {:>20}  ", num)?;
+                let attrs = if byte_offset == self.cursor {
+                    if is_selected {
+                        ColorPair(PAIR_SELECTED_CURSOR)
+                    } else {
+                        ColorPair(PAIR_CURSOR)
+                    }
                 } else {
-                    buf.push_str("int 32:                       ");
-                }
-            } else {
-                if let Some(num) = get_u8(mem, self.cursor) {
-                    write!(buf, " int  8: {:>6}  ", num)?;
-                } else {
-                    buf.push_str(" int  8:         ");
-                }
-
-                if let Some(num) = get_u32(mem, self.cursor, self.endian) {
-                    write!(buf, "int 32: {:>20}  ", num)?;
-                } else {
-                    buf.push_str("int 32:                       ");
-                }
-            }
-
-            if let Some(num) = get_f32(mem, self.cursor, self.endian) {
-                write!(buf, "float 32: {:>20.6e}  ", num)?;
-            } else {
-                buf.push_str("float 32:                              ");
-            }
-
-            window.put_str(&buf[..min(self.win_size.columns as usize, buf.len())])?;
-
-            window.move_to((self.win_size.rows - 3, 0))?;
-
-            buf.clear();
-            if self.signed {
-                if let Some(num) = get_i16(mem, self.cursor, self.endian) {
-                    write!(buf, " int 16: {:>6}  ", num)?;
-                } else {
-                    buf.push_str(" int 16:         ");
-                }
-
-                if let Some(num) = get_i64(mem, self.cursor, self.endian) {
-                    write!(buf, "int 64: {:>20}  ", num)?;
-                } else {
-                    buf.push_str("int 64:                       ");
-                }
-            } else {
-                if let Some(num) = get_u16(mem, self.cursor, self.endian) {
-                    write!(buf, " int 16: {:>6}  ", num)?;
-                } else {
-                    buf.push_str(" int 16:         ");
-                }
-
-                if let Some(num) = get_u64(mem, self.cursor, self.endian) {
-                    write!(buf, "int 64: {:>20}  ", num)?;
-                } else {
-                    buf.push_str("int 64:                       ");
-                }
-            }
-
-            if let Some(num) = get_f64(mem, self.cursor, self.endian) {
-                write!(buf, "float 64: {:>20.6e}  ", num)?;
-            } else {
-                buf.push_str("float 64:                              ");
-            }
-
-            window.put_str(&buf[..min(self.win_size.columns as usize, buf.len())])?;
-
-            if self.win_size.columns >= 5 {
-                window.move_to((self.win_size.rows - 1, self.win_size.columns - 5))?;
-                let pos = if size > 1 {
-                    100 * self.cursor / (size - 1)
-                } else {
-                    100
+                    if is_selected {
+                        ColorPair(PAIR_SELECTION)
+                    } else if is_match {
+                        ColorPair(PAIR_MATCH)
+                    } else if !is_ascii {
+                        ColorPair(PAIR_NON_ASCII)
+                    } else {
+                        ColorPair(PAIR_NORMAL)
+                    }
                 };
-                window.put_str(format!("{:>3}%", pos))?;
+
+                window.turn_on_attributes(attrs)?;
+                window.put_str(&buf)?;
+            }
+            window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+
+            for _ in end_byte_offset..overflow_offset {
+                window.put_char(' ')?;
             }
 
-            window.move_to((self.win_size.rows - 1, 1))?;
+            line += 1;
+        }
 
-            buf.clear();
-            buf.push_str(match self.endian {
-                Endian::Little => "[ Little &Endian ]",
-                Endian::Big    => "[  Big &Endian   ]",
-            });
+        let rows = self.win_size.rows;
+        window.move_to((rows - 6, 0))?;
 
-            buf.push_str(
-                if self.signed { "  [  S&igned  ]" }
-                else           { "  [ Uns&igned ]" }
-            );
+        buf.clear();
+        write!(buf,
+            " &Offset: [ {:>14} ]  &Selection: {} - {}",
+            self.cursor, self.selection_start, self.selection_end)?;
+        if self.selecting {
+            buf.push_str(" selecting");
+        }
+        // 2 & marks
+        while buf.len() < self.win_size.columns as usize + 2 {
+            buf.push(' ');
+        }
+        let _ = put_label(window, &buf[..min(self.win_size.columns as usize, buf.len())]);
 
-            buf.push_str("  [ &Quit ]");
+        if self.offset_input.has_focus() {
+            self.offset_input.redraw(window, (rows - 6, 10))?;
+        }
 
-            // ignore over long line errors here
-            let _ = put_label(window, buf);
+        window.move_to((self.win_size.rows - 4, 0))?;
 
-            window.move_to((self.win_size.rows - 7, 0))?;
-            if self.file_input.has_focus() {
-                window.put_str(FILE_INPUT_LABEL)?;
-                self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+        buf.clear();
+        if self.signed {
+            if let Some(num) = get_i8(mem, self.cursor) {
+                write!(buf, " int  8: {:>6}  ", num)?;
             } else {
-                for _ in 0..self.win_size.columns {
-                    window.put_char(' ')?;
-                }
+                buf.push_str(" int  8:         ");
             }
+
+            if let Some(num) = get_i32(mem, self.cursor, self.endian) {
+                write!(buf, "int 32: {:>20}  ", num)?;
+            } else {
+                buf.push_str("int 32:                       ");
+            }
+        } else {
+            if let Some(num) = get_u8(mem, self.cursor) {
+                write!(buf, " int  8: {:>6}  ", num)?;
+            } else {
+                buf.push_str(" int  8:         ");
+            }
+
+            if let Some(num) = get_u32(mem, self.cursor, self.endian) {
+                write!(buf, "int 32: {:>20}  ", num)?;
+            } else {
+                buf.push_str("int 32:                       ");
+            }
+        }
+
+        if let Some(num) = get_f32(mem, self.cursor, self.endian) {
+            write!(buf, "float 32: {:>20.6e}  ", num)?;
+        } else {
+            buf.push_str("float 32:                              ");
+        }
+
+        window.put_str(&buf[..min(self.win_size.columns as usize, buf.len())])?;
+
+        window.move_to((self.win_size.rows - 3, 0))?;
+
+        buf.clear();
+        if self.signed {
+            if let Some(num) = get_i16(mem, self.cursor, self.endian) {
+                write!(buf, " int 16: {:>6}  ", num)?;
+            } else {
+                buf.push_str(" int 16:         ");
+            }
+
+            if let Some(num) = get_i64(mem, self.cursor, self.endian) {
+                write!(buf, "int 64: {:>20}  ", num)?;
+            } else {
+                buf.push_str("int 64:                       ");
+            }
+        } else {
+            if let Some(num) = get_u16(mem, self.cursor, self.endian) {
+                write!(buf, " int 16: {:>6}  ", num)?;
+            } else {
+                buf.push_str(" int 16:         ");
+            }
+
+            if let Some(num) = get_u64(mem, self.cursor, self.endian) {
+                write!(buf, "int 64: {:>20}  ", num)?;
+            } else {
+                buf.push_str("int 64:                       ");
+            }
+        }
+
+        if let Some(num) = get_f64(mem, self.cursor, self.endian) {
+            write!(buf, "float 64: {:>20.6e}  ", num)?;
+        } else {
+            buf.push_str("float 64:                              ");
+        }
+
+        window.put_str(&buf[..min(self.win_size.columns as usize, buf.len())])?;
+
+        if self.win_size.columns >= 5 {
+            window.move_to((self.win_size.rows - 1, self.win_size.columns - 5))?;
+            let pos = if size > 1 {
+                100 * self.cursor / (size - 1)
+            } else {
+                100
+            };
+            window.put_str(format!("{:>3}%", pos))?;
+        }
+
+        window.move_to((self.win_size.rows - 1, 1))?;
+
+        buf.clear();
+        buf.push_str(match self.endian {
+            Endian::Little => "[ Little &Endian ]",
+            Endian::Big    => "[  Big &Endian   ]",
+        });
+
+        buf.push_str(
+            if self.signed { "  [  S&igned  ]" }
+            else           { "  [ Uns&igned ]" }
+        );
+
+        buf.push_str("  [ &Quit ]");
+
+        // ignore over long line errors here
+        let _ = put_label(window, buf);
+
+        window.move_to((self.win_size.rows - 7, 0))?;
+        if self.file_input.has_focus() {
+            window.put_str(FILE_INPUT_LABEL)?;
+            self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+        } else {
+            for _ in 0..self.win_size.columns {
+                window.put_char(' ')?;
+            }
+        }
+
+        if self.help_shown {
+            self.help_box.redraw(window)?;
         }
 
         Ok(())
@@ -657,6 +683,10 @@ impl<'a> Hox<'a> {
             columns: if win_size.columns > label_len { win_size.columns - label_len } else { 0 },
             rows: win_size.rows,
         })?;
+
+        if self.help_shown {
+            self.help_box.resize(&win_size)?;
+        }
 
         if win_size.rows != self.win_size.rows || win_size.columns != self.win_size.columns {
             window.clear()?;
@@ -809,10 +839,13 @@ impl<'a> Hox<'a> {
                 self.file_input.focus("")?;
                 self.need_redraw = true;
             },
+            Input::Character('h') => {
+                self.help_box.resize(&self.win_size)?;
+                self.help_shown  = true;
+                self.need_redraw = true;
+            },
             Input::Character('q') => return Ok(false),
-            _input => {
-                //self.curses.window_mut().put_str(format!("INPUT: {:?}\n", input))?;
-            }
+            _input => {}
         }
 
         Ok(true)
@@ -828,16 +861,37 @@ impl<'a> Hox<'a> {
             }
 
             if let Some(input) = self.curses.window_mut().read_char() {
-                if self.file_input.has_focus() {
+                if self.help_shown {
+                    if input == Input::Character('h') {
+                        self.help_shown  = false;
+                        self.need_redraw = true;
+                    } else {
+                        match self.help_box.handle(input)? {
+                            TextBoxResult::Redraw => {
+                                self.need_redraw = true;
+                            }
+                            TextBoxResult::Ignore => {}
+                            TextBoxResult::Quit => {
+                                self.help_shown = false;
+                                self.need_redraw = true;
+                            }
+                            TextBoxResult::PropagateEvent => {
+                                if !self.handle(input)? {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else if self.file_input.has_focus() {
                     match self.file_input.handle(input)? {
                         WidgetResult::PropagateEvent => {
                             if !self.handle(input)? {
                                 break;
                             }
-                        },
+                        }
                         WidgetResult::Redraw => {
                             self.need_redraw = true;
-                        },
+                        }
                         WidgetResult::Value(path) => {
                             // TODO: error handling
                             self.need_redraw = true;
@@ -855,8 +909,8 @@ impl<'a> Hox<'a> {
                                     eprintln!("{}", error);
                                 }
                             }
-                        },
-                        WidgetResult::Ignore => {},
+                        }
+                        WidgetResult::Ignore => {}
                     }
                 } else if self.offset_input.has_focus() {
                     match self.offset_input.handle(input)? {
@@ -864,14 +918,14 @@ impl<'a> Hox<'a> {
                             if !self.handle(input)? {
                                 break;
                             }
-                        },
+                        }
                         WidgetResult::Redraw => {
                             self.need_redraw = true;
-                        },
+                        }
                         WidgetResult::Value(value) => {
                             self.set_cursor(value);
-                        },
-                        WidgetResult::Ignore => {},
+                        }
+                        WidgetResult::Ignore => {}
                     }
                 } else {
                     if !self.handle(input)? {

@@ -36,11 +36,11 @@ Features
 TODO
 ----
 
-* [ ] search for ASCII text
+* [ ] search for ASCII/UTF-8 text
 * [ ] search for binary (hex input)
 * [ ] search for numbers
 * [x] save selection to file
 * [ ] display errors invlolving the above
 * [x] highlight same as selection
-* [ ] help pop-up
+* [x] help pop-up
 * [ ] choose license (probably GPLv3)

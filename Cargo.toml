@@ -9,4 +9,4 @@ edition = "2018"
 [dependencies]
 clap = "2.33.3"
 libc = "0.2.85"
-pancurses-result = "0.5.1"
+pancurses-result = { version = "0.5.1", features = ["wide"] }
