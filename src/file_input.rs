@@ -1,6 +1,7 @@
 use std::path::{PathBuf};
 use std::ffi::OsStr;
 use std::cmp::min;
+use std::collections::vec_deque::VecDeque;
 
 use pancurses_result::{Window, Point, Input, ColorPair, Dimension};
 
@@ -15,6 +16,7 @@ pub struct FileInput {
     size: usize,
     cursor: usize,
     view_offset: usize,
+    history: VecDeque<Vec<char>>,
 }
 
 impl FileInput {
@@ -26,6 +28,7 @@ impl FileInput {
             size,
             cursor: 0,
             view_offset: 0,
+            history: VecDeque::new(),
         }
     }
 
@@ -310,6 +313,16 @@ impl InputWidget<&str, PathBuf> for FileInput {
                     return Ok(WidgetResult::Ignore);
                 }
                 self.focused = false;
+                if let Some(back) = self.history.back() {
+                    if back != &self.buf {
+                        if self.history.len() == 1024 {
+                            self.history.pop_front();
+                        }
+                        self.history.push_back(self.buf.clone());
+                    }
+                } else {
+                    self.history.push_back(self.buf.clone());
+                }
                 return Ok(WidgetResult::Value(PathBuf::from(self.buf.iter().collect::<String>())))
             }
             Input::Character(ch) => {
@@ -339,8 +352,31 @@ impl InputWidget<&str, PathBuf> for FileInput {
                     return Ok(WidgetResult::Redraw);
                 }
             }
-            Input::KeyUp | Input::KeyDown => {
-                return Ok(WidgetResult::Ignore);
+            Input::KeyUp => {
+                if self.history.is_empty() {
+                    return Ok(WidgetResult::Ignore);
+                }
+                self.history.push_front(self.buf.clone());
+                self.buf = self.history.pop_back().unwrap();
+                self.cursor = self.buf.len();
+                if self.cursor > self.size {
+                    self.view_offset = self.cursor - self.size;
+                }
+
+                return Ok(WidgetResult::Redraw);
+            }
+            Input::KeyDown => {
+                if self.history.is_empty() {
+                    return Ok(WidgetResult::Ignore);
+                }
+                self.history.push_back(self.buf.clone());
+                self.buf = self.history.pop_front().unwrap();
+                self.cursor = self.buf.len();
+                if self.cursor > self.size {
+                    self.view_offset = self.cursor - self.size;
+                }
+
+                return Ok(WidgetResult::Redraw);
             }
             _input => {
                 return Ok(WidgetResult::PropagateEvent);
