@@ -17,6 +17,7 @@ pub struct FileInput {
     cursor: usize,
     view_offset: usize,
     history: VecDeque<Vec<char>>,
+    future:  VecDeque<Vec<char>>,
 }
 
 impl FileInput {
@@ -29,6 +30,7 @@ impl FileInput {
             cursor: 0,
             view_offset: 0,
             history: VecDeque::new(),
+            future:  VecDeque::new(),
         }
     }
 
@@ -313,14 +315,17 @@ impl InputWidget<&str, PathBuf> for FileInput {
                     return Ok(WidgetResult::Ignore);
                 }
                 self.focused = false;
-                if let Some(back) = self.history.back() {
-                    if back != &self.buf {
-                        if self.history.len() == 1024 {
-                            self.history.pop_front();
-                        }
-                        self.history.push_back(self.buf.clone());
+                if self.future.len() > 0 {
+                    let mut future = VecDeque::new();
+                    std::mem::swap(&mut future, &mut self.future);
+                    self.history.extend(future.into_iter());
+                }
+                if self.history.is_empty() {
+                    self.history.push_back(self.buf.clone());
+                } else if self.history[self.history.len() - 1] != self.buf {
+                    if self.history.len() == 1024 {
+                        self.history.pop_front();
                     }
-                } else {
                     self.history.push_back(self.buf.clone());
                 }
                 return Ok(WidgetResult::Value(PathBuf::from(self.buf.iter().collect::<String>())))
@@ -356,7 +361,7 @@ impl InputWidget<&str, PathBuf> for FileInput {
                 if self.history.is_empty() {
                     return Ok(WidgetResult::Ignore);
                 }
-                self.history.push_front(self.buf.clone());
+                self.future.push_front(self.buf.clone());
                 self.buf = self.history.pop_back().unwrap();
                 self.cursor = self.buf.len();
                 if self.cursor > self.size {
@@ -366,11 +371,11 @@ impl InputWidget<&str, PathBuf> for FileInput {
                 return Ok(WidgetResult::Redraw);
             }
             Input::KeyDown => {
-                if self.history.is_empty() {
+                if self.future.is_empty() {
                     return Ok(WidgetResult::Ignore);
                 }
                 self.history.push_back(self.buf.clone());
-                self.buf = self.history.pop_front().unwrap();
+                self.buf = self.future.pop_front().unwrap();
                 self.cursor = self.buf.len();
                 if self.cursor > self.size {
                     self.view_offset = self.cursor - self.size;
