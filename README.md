@@ -40,7 +40,7 @@ TODO
 * [ ] search for binary (hex input)
 * [ ] search for numbers
 * [x] save selection to file
-* [ ] display errors invlolving the above
+* [x] display errors invlolving the above
 * [x] highlight same as selection
 * [x] help pop-up
 * [ ] choose license (probably GPLv3)

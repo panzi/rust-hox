@@ -4,7 +4,7 @@ use pancurses_result::{Window, Input, Dimension};
 use crate::result::Result;
 use crate::consts::*;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TextBoxResult {
     PropagateEvent,
     Redraw,
@@ -164,9 +164,9 @@ impl<'a> TextBox<'a> {
             Input::KeyResize => {
                 Ok(TextBoxResult::PropagateEvent)
             }
-            Input::Character('q') | Input::Character(ESC) => {
+            Input::Character('q') | Input::Character(ESCAPE) | Input::Character(END_OF_TRANSMISSION) => {
                 Ok(TextBoxResult::Quit)
-            },
+            }
             _input => {
                 Ok(TextBoxResult::Ignore)
             }

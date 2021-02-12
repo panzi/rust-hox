@@ -1,4 +1,5 @@
-pub const ESC: char = '\u{1b}';
+pub const ESCAPE:              char = '\u{1b}';
+pub const END_OF_TRANSMISSION: char = '\u{4}';
 
 pub const PAIR_NORMAL:          u8 =  1;
 pub const PAIR_INVERTED:        u8 =  2;

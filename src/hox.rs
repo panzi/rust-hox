@@ -2,6 +2,7 @@ use std::fs::File;
 use std::fmt::Write;
 use std::cmp::{min, max};
 
+#[allow(unused)]
 use pancurses_result::{
     initscr, Input, Dimension, Curses, Window,
     Attribute, ColorPair, CursorVisibility,
@@ -14,6 +15,7 @@ use crate::result::{Result, Error};
 use crate::number_input::NumberInput;
 use crate::file_input::FileInput;
 use crate::text_box::{TextBox, TextBoxResult};
+use crate::search_widget::{SearchWidget, SearchMode};
 use crate::consts::*;
 use crate::input_widget::{InputWidget, WidgetResult};
 
@@ -24,6 +26,7 @@ pub enum Endian {
 }
 
 const FILE_INPUT_LABEL: &str = "Filename: ";
+const SEARCH_LABEL: &str = "Search: ";
 
 fn put_label(window: &mut Window, text: &str) -> Result<()> {
     let mut slice = text;
@@ -218,6 +221,7 @@ pub struct Hox<'a> {
     help_box: TextBox<'a>,
     help_shown: bool,
     error: Option<String>,
+    search_widget: SearchWidget,
 }
 
 impl<'a> Hox<'a> {
@@ -297,6 +301,7 @@ f ... search (not implemented yet)
             ),
             help_shown: false,
             error: None,
+            search_widget: SearchWidget::new(0),
         })
     }
 
@@ -357,14 +362,14 @@ f ... search (not implemented yet)
     }
 
     fn redraw(&mut self) -> Result<()> {
-        // 0001:  00 31[32]20 00 00 11 00 10 10  .12 ......
+        // 0001:  00 31[32]20 00 00 11 00 10 10  .12                        ......
         //
-        // offset: [          2 ]  selection: 0 - 0
+        // &Offset: [          2 ]  &Selection: 0 - 0
         //
         // int  8:           32    int 32:          8242    float 32:          ...
         // int 16:         8242    int 64:          8242    float 64:          ...
         //
-        // [ little &endian ]  [ uns&igned ]  [ &quit ]                                0%
+        // [ Little &Endian ]  [ Uns&igned ]  [ &Help ]  [ &Quit ]              0%
 
         let window = self.curses.window_mut();
         let bytes_per_row = self.bytes_per_row;
@@ -664,6 +669,9 @@ f ... search (not implemented yet)
         if self.file_input.has_focus() {
             window.put_str(FILE_INPUT_LABEL)?;
             self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+        } else if self.search_widget.has_focus() {
+            window.put_str(SEARCH_LABEL)?;
+            self.search_widget.redraw(window, (self.win_size.rows - 7, SEARCH_LABEL.len() as i32))?;
         } else if let Some(error) = &self.error {
             let mut error = error.replace('\n', " ");
             error.insert_str(0, "Error: ");
@@ -691,8 +699,14 @@ f ... search (not implemented yet)
         let window = self.curses.window_mut();
         let win_size = window.size();
 
-        let label_len =FILE_INPUT_LABEL.len() as i32;
+        let label_len = FILE_INPUT_LABEL.len() as i32;
         self.file_input.resize(&Dimension {
+            columns: if win_size.columns > label_len { win_size.columns - label_len } else { 0 },
+            rows: win_size.rows,
+        })?;
+
+        let label_len = SEARCH_LABEL.len() as i32;
+        self.search_widget.resize(&Dimension {
             columns: if win_size.columns > label_len { win_size.columns - label_len } else { 0 },
             rows: win_size.rows,
         })?;
@@ -746,30 +760,30 @@ f ... search (not implemented yet)
                     self.set_cursor(cursor);
                 }
                 self.error = None;
-            },
+            }
             Input::KeyUp => {
                 if self.cursor >= self.bytes_per_row {
                     self.set_cursor(self.cursor - self.bytes_per_row);
                 }
                 self.error = None;
-            },
+            }
             Input::KeyLeft => {
                 if self.cursor > 0 {
                     self.set_cursor(self.cursor - 1);
                 }
                 self.error = None;
-            },
+            }
             Input::KeyRight => {
                 self.set_cursor(self.cursor + 1);
                 self.error = None;
-            },
+            }
             Input::KeyHome => {
                 if self.bytes_per_row > 0 {
                     let cursor = self.cursor - self.cursor % self.bytes_per_row;
                     self.set_cursor(cursor);
                 }
                 self.error = None;
-            },
+            }
             Input::KeyEnd => {
                 let size = self.mmap.size();
                 if size > 0 && self.bytes_per_row > 0 {
@@ -777,20 +791,20 @@ f ... search (not implemented yet)
                     self.set_cursor(cursor);
                 }
                 self.error = None;
-            },
+            }
             Input::Character('\u{18}') => { // Ctrl+Home
                 if self.cursor != 0 {
                     self.set_cursor(0);
                 }
                 self.error = None;
-            },
+            }
             Input::Character('\u{13}') => { // Ctrl+End
                 let size = self.mmap.size();
                 if size > 0 {
                     self.set_cursor(size - 1);
                 }
                 self.error = None;
-            },
+            }
             Input::KeyPPage => {
                 if self.view_offset > 0 {
                     if self.view_offset >= self.view_size {
@@ -805,7 +819,7 @@ f ... search (not implemented yet)
                     self.need_redraw = true;
                 }
                 self.error = None;
-            },
+            }
             Input::KeyNPage => {
                 let size = self.mmap.size();
                 if self.view_offset < size && self.view_size <= size {
@@ -822,21 +836,21 @@ f ... search (not implemented yet)
                     self.need_redraw = true;
                 }
                 self.error = None;
-            },
+            }
             Input::KeyResize => {
                 self.resize()?;
-            },
+            }
             Input::Character('e') => {
                 self.set_endian(match self.endian {
                     Endian::Big    => Endian::Little,
                     Endian::Little => Endian::Big,
                 });
                 self.error = None;
-            },
+            }
             Input::Character('i') => {
                 self.set_signed(!self.signed);
                 self.error = None;
-            },
+            }
             Input::Character('s') => {
                 if self.selecting {
                     self.selecting = false;
@@ -847,34 +861,39 @@ f ... search (not implemented yet)
                 }
                 self.need_redraw = true;
                 self.error = None;
-            },
+            }
             Input::Character('S') => {
                 self.selecting = false;
                 self.selection_start = 0;
                 self.selection_end   = 0;
                 self.need_redraw = true;
                 self.error = None;
-            },
+            }
             Input::Character('o') => {
                 self.offset_input.focus(self.cursor)?;
                 self.need_redraw = true;
                 self.error = None;
-            },
+            }
             Input::Character('f') => {
-                // TODO: search ASCII
+                // TODO: search mode selector
                 self.error = None;
-            },
+                self.search_widget.set_search_mode(SearchMode::Binary);
+                self.search_widget.focus("")?;
+                self.need_redraw = true;
+            }
             Input::Character('w') => {
                 self.error = None;
                 self.file_input.focus("")?;
                 self.need_redraw = true;
-            },
+            }
             Input::Character('h') | Input::KeyF1 => {
                 self.help_box.resize(&self.win_size)?;
                 self.help_shown  = true;
                 self.need_redraw = true;
-            },
-            Input::Character('q') => return Ok(false),
+            }
+            Input::Character('q') | Input::Character(END_OF_TRANSMISSION) => {
+                return Ok(false)
+            }
             _input => {}
         }
 
@@ -941,6 +960,22 @@ f ... search (not implemented yet)
                                     self.error = Some(format!("{}: {:?}", error, path));
                                 }
                             }
+                        }
+                        WidgetResult::Ignore => {}
+                    }
+                } else if self.search_widget.has_focus() {
+                    match self.search_widget.handle(input)? {
+                        WidgetResult::PropagateEvent => {
+                            if !self.handle(input)? {
+                                break;
+                            }
+                        }
+                        WidgetResult::Redraw => {
+                            self.need_redraw = true;
+                        }
+                        WidgetResult::Value(bytes) => {
+                            // TODO: implement search
+                            eprintln!("TODO: imlement search {:?}", bytes);
                         }
                         WidgetResult::Ignore => {}
                     }

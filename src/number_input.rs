@@ -5,9 +5,7 @@ use std::cmp::min;
 
 use crate::input_widget::{InputWidget, WidgetResult};
 use crate::result::Result;
-use crate::consts::{
-    PAIR_NORMAL, PAIR_INPUT_ERROR, ESC, PAIR_INVERTED,
-};
+use crate::consts::*;
 
 use pancurses_result::{
     Input, Point, Window, ColorPair,
@@ -230,7 +228,7 @@ where N: FromStr, N: Display {
                     return Ok(WidgetResult::Redraw);
                 }
             }
-            Input::Character('q') | Input::Character(ESC) => {
+            Input::Character('q') | Input::Character(ESCAPE) | Input::Character(END_OF_TRANSMISSION) => {
                 self.focused = false;
                 return Ok(WidgetResult::Redraw);
             }

@@ -13,6 +13,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[allow(unused)]
     #[inline]
     pub fn new(error_type: ErrorType, path: Option<PathBuf>) -> Self {
         Error {
@@ -21,6 +22,7 @@ impl Error {
         }
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn error_type(&self) -> &ErrorType {
         &self.error_type
@@ -39,6 +41,7 @@ impl Error {
         }
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn io_with_path(error: std::io::Error, path: impl AsRef<Path>) -> Self {
         Error {
@@ -47,6 +50,7 @@ impl Error {
         }
     }
 
+    #[allow(unused)]
     #[inline]
     pub fn io(error: std::io::Error) -> Self {
         Error {
@@ -103,6 +107,15 @@ impl From<()> for Error {
 
 impl From<std::fmt::Error> for Error {
     fn from(error: std::fmt::Error) -> Self {
+        Error {
+            error_type: ErrorType::Message(format!("{}", error)),
+            path: None,
+        }
+    }
+}
+
+impl From<std::num::ParseIntError> for Error {
+    fn from(error: std::num::ParseIntError) -> Self {
         Error {
             error_type: ErrorType::Message(format!("{}", error)),
             path: None,

@@ -2,7 +2,7 @@ use pancurses_result::{Window, Point, Input, Dimension};
 
 use crate::result::Result;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum WidgetResult<V> {
     PropagateEvent,
     Redraw,

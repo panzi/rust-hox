@@ -306,7 +306,7 @@ impl InputWidget<&str, PathBuf> for FileInput {
                     return Ok(WidgetResult::Redraw);
                 }
             }
-            Input::Character(ESC) => {
+            Input::Character(ESCAPE) | Input::Character(END_OF_TRANSMISSION) => {
                 self.focused = false;
                 return Ok(WidgetResult::Redraw);
             }
