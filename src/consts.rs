@@ -10,3 +10,4 @@ pub const PAIR_SELECTED_CURSOR: u8 =  7;
 pub const PAIR_INPUT_ERROR:     u8 =  8;
 pub const PAIR_MATCH:           u8 =  9;
 pub const PAIR_AUTO_COMPLETE:   u8 = 10;
+pub const PAIR_ERROR_MESSAGE:   u8 = 11;

@@ -217,6 +217,7 @@ pub struct Hox<'a> {
     file_input: FileInput,
     help_box: TextBox<'a>,
     help_shown: bool,
+    error: Option<String>,
 }
 
 impl<'a> Hox<'a> {
@@ -255,6 +256,7 @@ impl<'a> Hox<'a> {
         colors.set_color_pair(PAIR_INPUT_ERROR        as i16, COLOR_WHITE, COLOR_RED)?;
         colors.set_color_pair(PAIR_MATCH              as i16, COLOR_WHITE, 236)?;
         colors.set_color_pair(PAIR_AUTO_COMPLETE      as i16, 235,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_ERROR_MESSAGE      as i16, COLOR_RED,   COLOR_BLACK)?;
         
         Ok(Self {
             mmap,
@@ -294,6 +296,7 @@ f ... search (not implemented yet)
 © 2021 Mathias Panzenböck", 2, 1,
             ),
             help_shown: false,
+            error: None,
         })
     }
 
@@ -652,7 +655,7 @@ f ... search (not implemented yet)
             else           { "  [ Uns&igned ]" }
         );
 
-        buf.push_str("  [ &Quit ]");
+        buf.push_str("  [ &Help]  [ &Quit ]");
 
         // ignore over long line errors here
         let _ = put_label(window, buf);
@@ -661,6 +664,16 @@ f ... search (not implemented yet)
         if self.file_input.has_focus() {
             window.put_str(FILE_INPUT_LABEL)?;
             self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+        } else if let Some(error) = &self.error {
+            let mut error = error.replace('\n', " ");
+            error.insert_str(0, "Error: ");
+            let count = error.chars().count();
+            window.turn_on_attributes(ColorPair(PAIR_ERROR_MESSAGE))?;
+            let _ = window.put_str(error);
+            window.turn_off_attributes(ColorPair(PAIR_ERROR_MESSAGE))?;
+            for _ in count..self.win_size.columns as usize {
+                window.put_char(' ')?;
+            }
         } else {
             for _ in 0..self.win_size.columns {
                 window.put_char(' ')?;
@@ -732,25 +745,30 @@ f ... search (not implemented yet)
                 if cursor < self.mmap.size() {
                     self.set_cursor(cursor);
                 }
+                self.error = None;
             },
             Input::KeyUp => {
                 if self.cursor >= self.bytes_per_row {
                     self.set_cursor(self.cursor - self.bytes_per_row);
                 }
+                self.error = None;
             },
             Input::KeyLeft => {
                 if self.cursor > 0 {
                     self.set_cursor(self.cursor - 1);
                 }
+                self.error = None;
             },
             Input::KeyRight => {
                 self.set_cursor(self.cursor + 1);
+                self.error = None;
             },
             Input::KeyHome => {
                 if self.bytes_per_row > 0 {
                     let cursor = self.cursor - self.cursor % self.bytes_per_row;
                     self.set_cursor(cursor);
                 }
+                self.error = None;
             },
             Input::KeyEnd => {
                 let size = self.mmap.size();
@@ -758,17 +776,20 @@ f ... search (not implemented yet)
                     let cursor = min(self.cursor + self.bytes_per_row - self.cursor % self.bytes_per_row , size) - 1;
                     self.set_cursor(cursor);
                 }
+                self.error = None;
             },
             Input::Character('\u{18}') => { // Ctrl+Home
                 if self.cursor != 0 {
                     self.set_cursor(0);
                 }
+                self.error = None;
             },
             Input::Character('\u{13}') => { // Ctrl+End
                 let size = self.mmap.size();
                 if size > 0 {
                     self.set_cursor(size - 1);
                 }
+                self.error = None;
             },
             Input::KeyPPage => {
                 if self.view_offset > 0 {
@@ -783,6 +804,7 @@ f ... search (not implemented yet)
                     }
                     self.need_redraw = true;
                 }
+                self.error = None;
             },
             Input::KeyNPage => {
                 let size = self.mmap.size();
@@ -799,6 +821,7 @@ f ... search (not implemented yet)
                     }
                     self.need_redraw = true;
                 }
+                self.error = None;
             },
             Input::KeyResize => {
                 self.resize()?;
@@ -808,9 +831,11 @@ f ... search (not implemented yet)
                     Endian::Big    => Endian::Little,
                     Endian::Little => Endian::Big,
                 });
+                self.error = None;
             },
             Input::Character('i') => {
                 self.set_signed(!self.signed);
+                self.error = None;
             },
             Input::Character('s') => {
                 if self.selecting {
@@ -821,21 +846,26 @@ f ... search (not implemented yet)
                     self.selecting       = true;
                 }
                 self.need_redraw = true;
+                self.error = None;
             },
             Input::Character('S') => {
                 self.selecting = false;
                 self.selection_start = 0;
                 self.selection_end   = 0;
                 self.need_redraw = true;
+                self.error = None;
             },
             Input::Character('o') => {
                 self.offset_input.focus(self.cursor)?;
                 self.need_redraw = true;
+                self.error = None;
             },
             Input::Character('f') => {
                 // TODO: search ASCII
+                self.error = None;
             },
             Input::Character('w') => {
+                self.error = None;
                 self.file_input.focus("")?;
                 self.need_redraw = true;
             },
@@ -896,20 +926,19 @@ f ... search (not implemented yet)
                             self.need_redraw = true;
                         }
                         WidgetResult::Value(path) => {
-                            // TODO: error handling
                             self.need_redraw = true;
-                            match File::create(path) {
+                            match File::create(&path) {
                                 Ok(mut file) => {
                                     use std::io::Write;
 
                                     let data = &self.mmap.mem()[self.selection_start..self.selection_end];
 
                                     if let Err(error) = file.write_all(data) {
-                                        eprintln!("{}", error);
+                                        self.error = Some(format!("{}: {:?}", error, path));
                                     }
                                 }
                                 Err(error) => {
-                                    eprintln!("{}", error);
+                                    self.error = Some(format!("{}: {:?}", error, path));
                                 }
                             }
                         }
