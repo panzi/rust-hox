@@ -45,28 +45,37 @@ where N: FromStr, N: Display {
             ColorPair(PAIR_NORMAL)
         };
 
-        if cursor > 0 {
-            let before = &buf[..cursor];
-            window.turn_on_attributes(attrs)?;
-            window.put_str(before)?;
-            window.turn_off_attributes(attrs)?;
-        }
+        if self.focused {
+            if cursor > 0 {
+                let before = &buf[..cursor];
+                window.turn_on_attributes(attrs)?;
+                window.put_str(before)?;
+                window.turn_off_attributes(attrs)?;
+            }
 
-        if cursor < buf.len() {
-            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-            window.put_str(&buf[cursor..cursor + 1])?;
-            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
-        }
+            if cursor < buf.len() {
+                window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+                window.put_str(&buf[cursor..cursor + 1])?;
+                window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
 
-        if cursor + 1 < buf.len() {
-            let after = &buf[cursor + 1..];
+                if cursor + 1 < buf.len() {
+                    let after = &buf[cursor + 1..];
+                    window.turn_on_attributes(attrs)?;
+                    window.put_str(after)?;
+                    window.turn_off_attributes(attrs)?;
+                }
+            } else {
+                window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
+                window.put_char(' ')?;
+                window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
+            }
+        } else {
             window.turn_on_attributes(attrs)?;
-            window.put_str(after)?;
+            window.put_str(buf)?;
+            if cursor >= buf.len() {
+                window.put_char(' ')?;
+            }
             window.turn_off_attributes(attrs)?;
-        } else if cursor >= buf.len() && self.focused {
-            window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-            window.put_char(' ')?;
-            window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
         }
 
         Ok(())

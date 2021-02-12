@@ -206,16 +206,16 @@ impl SearchWidget {
 
             if cursor < buf.len() {
                 window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-                window.put_char(buf[cursor])?;
+                window.put_str(buf[cursor].to_string())?;
                 window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
-            }
 
-            if cursor + 1 < buf.len() {
-                let after: String = (&buf[cursor + 1..]).into_iter().collect();
-                window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
-                window.put_str(after)?;
-                window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
-            } else if cursor >= buf.len() {
+                if cursor + 1 < buf.len() {
+                    let after: String = (&buf[cursor + 1..]).into_iter().collect();
+                    window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+                    window.put_str(after)?;
+                    window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
+                }
+            } else {
                 window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
                 window.put_char(' ')?;
                 window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;

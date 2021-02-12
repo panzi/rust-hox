@@ -1,5 +1,5 @@
 use std::path::{PathBuf};
-use std::ffi::OsStr;
+use std::ffi::{OsStr};
 use std::cmp::min;
 use std::collections::vec_deque::VecDeque;
 
@@ -45,32 +45,32 @@ impl FileInput {
 
             if cursor < buf.len() {
                 window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-                window.put_char(buf[cursor])?;
+                window.put_str(buf[cursor].to_string())?;
                 window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
-            }
 
-            if cursor + 1 < buf.len() {
-                let after: String = (&buf[cursor + 1..]).into_iter().collect();
-                window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
-                window.put_str(after)?;
-                window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
+                if cursor + 1 < buf.len() {
+                    let after: String = (&buf[cursor + 1..]).into_iter().collect();
+                    window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+                    window.put_str(after)?;
+                    window.turn_off_attributes(ColorPair(PAIR_NORMAL))?;
+                }
 
-                if compl.len() > 1 {
-                    let compl: String = (&compl[1..]).into_iter().collect();
+                if !compl.is_empty() {
+                    let compl: String = compl.into_iter().collect();
                     window.turn_on_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
                     window.put_str(compl)?;
                     window.turn_off_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
                 }
-            } else if compl.len() > 0 {
+            } else if !compl.is_empty() {
                 window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
-                window.put_char(compl[0])?;
+                window.put_str(compl[0].to_string())?;
                 window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
 
                 let compl: String = (&compl[1..]).into_iter().collect();
                 window.turn_on_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
                 window.put_str(compl)?;
                 window.turn_off_attributes(ColorPair(PAIR_AUTO_COMPLETE))?;
-            } else if cursor >= buf.len() {
+            } else {
                 window.turn_on_attributes(ColorPair(PAIR_INVERTED))?;
                 window.put_char(' ')?;
                 window.turn_off_attributes(ColorPair(PAIR_INVERTED))?;
@@ -94,6 +94,10 @@ impl FileInput {
 
     fn autocomplete(&mut self) {
         self.autocomplete.clear();
+        if self.buf.is_empty() {
+            return;
+        }
+
         let path = PathBuf::from(self.buf.iter().collect::<String>());
         
         if let Some(parent) = path.parent() {
@@ -116,10 +120,22 @@ impl FileInput {
                         }
                     }
 
-                    if let Some(mut prefix) = max_common_prefix(&matches[..]) {
+                    if let Some(mut prefix) = max_common_prefix(&matches) {
+                        let mut path = parent.to_path_buf();
+                        path.push(prefix.iter().collect::<String>());
+
+                        if let Ok(meta) = path.metadata() {
+                            if meta.file_type().is_dir() {
+                                prefix.push(std::path::MAIN_SEPARATOR);
+                            }
+                        }
+
                         let index = leaf.chars().count();
                         prefix.drain(..index);
-                        self.autocomplete = prefix;
+
+                        if prefix.len() != 1 || prefix[0] != std::path::MAIN_SEPARATOR {
+                            self.autocomplete = prefix;
+                        }
                     }
                 }
             }
