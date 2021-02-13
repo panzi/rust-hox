@@ -975,7 +975,7 @@ f ... search (not implemented yet)
                         }
                         WidgetResult::Value(bytes) => {
                             // TODO: implement search
-                            eprintln!("TODO: imlement search {:?}", bytes);
+                            eprintln!("TODO: implement search {:?}", bytes);
                         }
                         WidgetResult::Ignore => {}
                     }

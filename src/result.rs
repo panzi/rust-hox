@@ -123,4 +123,13 @@ impl From<std::num::ParseIntError> for Error {
     }
 }
 
+impl From<std::str::Utf8Error> for Error {
+    fn from(error: std::str::Utf8Error) -> Self {
+        Error {
+            error_type: ErrorType::Message(format!("{}", error)),
+            path: None,
+        }
+    }
+}
+
 pub type Result<T> = core::result::Result<T, Error>;
