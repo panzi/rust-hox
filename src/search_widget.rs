@@ -711,7 +711,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                 self.focused = false;
                 return Ok(WidgetResult::Redraw);
             }
-            Input::Character('\n') => {
+            Input::Character('\n') | Input::KeyF3 => {
                 if self.buf.is_empty() {
                     return Ok(WidgetResult::Ignore);
                 }

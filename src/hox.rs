@@ -874,8 +874,7 @@ f ... search (not implemented yet)
                 self.need_redraw = true;
                 self.error = None;
             }
-            Input::Character('f') => {
-                // TODO: search mode selector
+            Input::Character('f') | Input::KeyF3 => {
                 self.error = None;
                 self.search_widget.set_search_mode(SearchMode::Binary);
                 self.search_widget.focus("")?;
