@@ -36,9 +36,11 @@ Features
 TODO
 ----
 
-* [ ] search for ASCII/UTF-8 text
-* [ ] search for binary (hex input)
-* [ ] search for numbers
+* [ ] search
+  * [x] input for ASCII/UTF-8 text
+  * [x] input for binary (hex input)
+  * [x] input for integers
+  * [ ] actual search (forward/backward)
 * [x] save selection to file
 * [x] display errors invlolving the above
 * [x] highlight same as selection

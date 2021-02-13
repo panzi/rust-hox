@@ -591,12 +591,19 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
         self.focused
     }
 
-    fn focus(&mut self, _initial_value: &str) -> Result<()> {
-        self.focused = true;
-        self.buf.clear();
-        self.cursor = 0;
-        self.view_offset = 0;
+    fn set_value(&mut self, value: &str) -> Result<()> {
+        let bytes = self.mode.parse(&value.chars().collect::<Vec<_>>())?;
+        self.buf = self.mode.stringify(&bytes)?.chars().collect();
+        self.cursor = self.buf.len();
+        if self.cursor > self.size {
+            self.view_offset = self.cursor - self.size;
+        }
 
+        Ok(())
+    }
+
+    fn focus(&mut self) -> Result<()> {
+        self.focused = true;
         Ok(())
     }
 
@@ -737,6 +744,10 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                 return Ok(WidgetResult::Ignore);
             }
             Input::Character(mut ch) => {
+                let cp = ch as u32;
+                if cp <= 0x1F || cp == 0x7F {
+                    return Ok(WidgetResult::PropagateEvent);
+                }
                 match self.mode {
                     SearchMode::Integer(_, sign, _) => {
                         if ch == 'q' {
@@ -752,6 +763,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                                 self.cursor += 1;
                             } else {
                                 self.buf.remove(self.cursor);
+                                return Ok(WidgetResult::PropagateEvent);
                             }
                         }
                     }
@@ -766,7 +778,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                         } else if ch >= 'a' && ch <= 'f' {
                             ch.make_ascii_uppercase();
                         } else if !((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F')) {
-                            return Ok(WidgetResult::Ignore);
+                            return Ok(WidgetResult::PropagateEvent);
                         }
 
                         if self.cursor >= self.buf.len() {

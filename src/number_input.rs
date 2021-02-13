@@ -89,11 +89,10 @@ where N: FromStr, N: Display {
         self.focused
     }
 
-    fn focus(&mut self, initial_value: N) -> Result<()> {
-        self.focused = true;
+    fn set_value(&mut self, value: N) -> Result<()> {
         self.error = false;
         self.buf.clear();
-        write!(self.buf, "{}", initial_value).unwrap();
+        write!(self.buf, "{}", value).unwrap();
         self.cursor = self.buf.len();
         if self.cursor > self.size {
             self.view_offset = self.cursor - self.size;
@@ -101,6 +100,11 @@ where N: FromStr, N: Display {
             self.view_offset = 0;
         }
 
+        Ok(())
+    }
+
+    fn focus(&mut self) -> Result<()> {
+        self.focused = true;
         Ok(())
     }
 

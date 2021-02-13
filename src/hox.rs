@@ -296,6 +296,15 @@ S ... clear selection
 w ... write selection to file
 f ... search (not implemented yet)
 
+Search
+──────
+
+F3 .... search
+F5 .... switch through modes: String/Binary/Integer
+F6 .... switch through integer sizes: 8/16/32/64
+F7 .... toggle signed/unsigned
+F8 .... toggle little endian/big endian
+ESC ... stop search
 
 © 2021 Mathias Panzenböck", 2, 1,
             ),
@@ -870,19 +879,27 @@ f ... search (not implemented yet)
                 self.error = None;
             }
             Input::Character('o') => {
-                self.offset_input.focus(self.cursor)?;
+                self.file_input.blur()?;
+                self.search_widget.blur()?;
+                self.offset_input.set_value(self.cursor)?;
+                self.offset_input.focus()?;
                 self.need_redraw = true;
                 self.error = None;
             }
             Input::Character('f') | Input::KeyF3 => {
                 self.error = None;
                 self.search_widget.set_search_mode(SearchMode::Binary);
-                self.search_widget.focus("")?;
+                self.file_input.blur()?;
+                self.offset_input.blur()?;
+                self.search_widget.focus()?;
                 self.need_redraw = true;
             }
             Input::Character('w') => {
                 self.error = None;
-                self.file_input.focus("")?;
+                self.search_widget.blur()?;
+                self.offset_input.blur()?;
+                self.file_input.set_value("")?;
+                self.file_input.focus()?;
                 self.need_redraw = true;
             }
             Input::Character('h') | Input::KeyF1 => {

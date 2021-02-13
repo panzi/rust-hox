@@ -15,7 +15,11 @@ pub trait InputWidget<InValue, OutValue=InValue> {
         false
     }
 
-    fn focus(&mut self, _initial_value: InValue) -> Result<()> {
+    fn set_value(&mut self, _value: InValue) -> Result<()> {
+        Ok(())
+    }
+
+    fn focus(&mut self) -> Result<()> {
         Ok(())
     }
 

@@ -189,9 +189,8 @@ impl InputWidget<&str, PathBuf> for FileInput {
         self.focused
     }
 
-    fn focus(&mut self, initial_value: &str) -> Result<()> {
-        self.focused = true;
-        self.buf.splice(.., initial_value.chars());
+    fn set_value(&mut self, value: &str) -> Result<()> {
+        self.buf.splice(.., value.chars());
         self.cursor = self.buf.len();
 
         if self.cursor > self.size {
@@ -199,6 +198,12 @@ impl InputWidget<&str, PathBuf> for FileInput {
         } else {
             self.view_offset = 0;
         }
+
+        Ok(())
+    }
+
+    fn focus(&mut self) -> Result<()> {
+        self.focused = true;
 
         Ok(())
     }
