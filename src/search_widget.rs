@@ -670,10 +670,11 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
     fn redraw<P>(&self, window: &mut Window, pos: P) -> Result<()>
     where P: Into<Point>, P: Copy {
         // [ Binary     ]
-        // [ String     ]
+        // [ Text       ]
         // [ UInt 64 LE ]
         if self.size <= 16 {
-            let _ = window.put_str(&"...             "[..self.size]);
+            let line = format!("  [ {:<10} ]", self.mode);
+            let _ = window.put_str(&line[line.len() - self.size..]);
             return Ok(());
         }
 

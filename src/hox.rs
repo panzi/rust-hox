@@ -57,7 +57,7 @@ pub fn is_sidebar_ascii(byte: u8) -> bool {
 
 #[inline]
 pub fn is_printable_ascii(byte: u8) -> bool {
-    (byte >= 0x20 && byte <= 0x7e) || byte == '\t' as u8
+    (byte >= 0x20 && byte <= 0x7e) || byte == '\t' as u8 || byte == 0xb
 }
 
 fn put_label(window: &mut Window, text: &str) -> Result<()> {
@@ -619,11 +619,6 @@ Press Enter, Escape or any normal key to clear errors.
                 let mask = self.view_mask[mask_index];
 
                 let byte = mem[byte_offset];
-                let ch = if is_sidebar_ascii(byte) {
-                    byte as char
-                } else {
-                    '.'
-                };
 
                 let attrs = if byte_offset == self.cursor {
                     if mask & MASK_SELECTED != 0 {
@@ -640,13 +635,25 @@ Press Enter, Escape or any normal key to clear errors.
                         ColorPair(PAIR_SEARCH_MATCH)
                     } else if mask & MASK_HIGHLIGHT != 0 {
                         ColorPair(PAIR_SELECTION_MATCH)
-                    } else {
+                    } else if is_sidebar_ascii(byte) {
                         ColorPair(PAIR_NORMAL)
+                    } else {
+                        ColorPair(PAIR_NON_ASCII)
                     }
                 };
 
                 window.turn_on_attributes(attrs)?;
-                window.put_char(ch)?;
+                if byte == '\n' as u8 {
+                    window.put_str("⏎")?;
+                } else if byte == '\t' as u8 {
+                    window.put_str("␉")?;
+                } else if byte == 0xb {
+                    window.put_str("␋")?;
+                } else if is_sidebar_ascii(byte) {
+                    window.put_char(byte as char)?;
+                } else {
+                    window.put_char('.')?;
+                }
             }
 
             window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
