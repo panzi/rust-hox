@@ -1009,6 +1009,7 @@ Press Enter, Escape or any normal key to clear errors.
                 self.error = None;
                 self.search_widget.blur()?;
                 self.search_data.clear();
+                self.view_mask_valid = false;
                 self.need_redraw = true;
             }
             Input::Character('n') => {
