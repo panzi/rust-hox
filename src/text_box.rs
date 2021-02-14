@@ -102,7 +102,7 @@ impl<'a> TextBox<'a> {
 
     pub fn redraw(&self, window: &mut Window) -> Result<()> {
         if self.win_size.columns as usize > self.hdiff as usize && self.win_size.columns as usize > self.vdiff as usize {
-            let width  = self.max_line_len + self.hdiff as usize;
+            let width  = min(self.max_line_len + self.hdiff as usize, self.win_size.columns as usize);
             let height = min(self.lines.len() - self.view_offset + self.vdiff as usize, self.win_size.rows as usize);
             let x = (self.win_size.columns as usize - width) / 2;
             let y = (self.win_size.rows    as usize - height) / 2;
@@ -233,42 +233,72 @@ fn draw_box(window: &mut Window, x: u32, y: u32, width: u32, height: u32) -> Res
 }
 
 fn wrap_lines(text: &str, max_width: usize) -> Vec<String> {
-    let mut lines = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
 
     if max_width > 0 {
+        let mut newline = Vec::new();
         for line in text.split('\n') {
             if line.chars().count() > max_width {
-                let mut newline = String::new();
-                let mut char_count = 0;
+                let mut first = true;
+                let mut wrap_indent = 0;
+
                 for word in line.split(' ') {
                     let word_len = word.chars().count();
-                    if char_count + word_len < max_width {
-                        if char_count != 0 {
-                            newline.push(' ');
-                            char_count += 1;
-                        }
-                        newline.push_str(word);
-                        char_count += word_len;
+                    let mut newlen = if first {
+                        newline.len() + word_len
                     } else {
-                        if char_count != 0 {
-                            lines.push(newline.clone());
-                            newline.clear();
+                        newline.len() + word_len + 1
+                    };
+
+                    if newline.len() > wrap_indent && newlen > max_width {
+                        lines.push(newline.iter().collect());
+                        newline.clear();
+                        for _ in 0..wrap_indent {
+                            newline.push(' ');
                         }
+                        first  = true;
+                        newlen = newline.len() + word_len;
+                    }
+
+                    if newlen <= max_width {
+                        if !first {
+                            newline.push(' ');
+                        }
+                        if wrap_indent == 0 && word_len >= 3 && word.chars().all(|ch| ch == '.') {
+                            wrap_indent = newlen + 1;
+                            if wrap_indent >= max_width {
+                                wrap_indent = 0;
+                            }
+                        }
+                        newline.extend(word.chars());
+                        first = false;
+                    } else {
+                        // word is longer than available space,
+                        // so we need to break the word itself up
+
+                        // newline must be empty here
+
                         let word = word.chars().collect::<Vec<_>>();
-                        let mut index = 0;
-                        let reminder = word.len() % max_width;
-                        let end_index = word.len() - reminder;
-                        while index < end_index {
-                            let next = index + max_width;
-                            lines.push((&word[index..next]).iter().collect());
-                            index = next;
+                        let mut offset = 0;
+                        while offset < word_len {
+                            if newline.len() > wrap_indent {
+                                lines.push(newline.iter().collect());
+                                newline.clear();
+                                for _ in 0..wrap_indent {
+                                    newline.push(' ');
+                                }
+                            }
+                            let new_offset = min(offset + max_width - wrap_indent, word_len);
+                            newline.extend(&word[offset..new_offset]);
+                            offset = new_offset;
                         }
-                        newline.extend(&word[index..]);
-                        char_count = reminder;
+
+                        first = false;
                     }
                 }
-                if char_count > 0 {
-                    lines.push(newline);
+                if newline.len() > 0 {
+                    lines.push(newline.iter().collect());
+                    newline.clear();
                 }
             } else {
                 lines.push(line.to_owned());
