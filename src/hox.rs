@@ -51,8 +51,13 @@ const FILE_INPUT_LABEL: &str = "Filename: ";
 const SEARCH_LABEL: &str = "Search: ";
 
 #[inline]
-pub fn is_printable_ascii(byte: u8) -> bool {
+pub fn is_sidebar_ascii(byte: u8) -> bool {
     byte >= 0x20 && byte <= 0x7e
+}
+
+#[inline]
+pub fn is_printable_ascii(byte: u8) -> bool {
+    (byte >= 0x20 && byte <= 0x7e) || byte == '\t' as u8
 }
 
 fn put_label(window: &mut Window, text: &str) -> Result<()> {
@@ -370,6 +375,7 @@ f or F3 ... open search bar (and search for current selection)
 F ......... clear search
 n ......... find next
 p ......... find previous
+# ......... select ASCII line under cursor
 
 Search
 ──────
@@ -613,7 +619,7 @@ Press Enter, Escape or any normal key to clear errors.
                 let mask = self.view_mask[mask_index];
 
                 let byte = mem[byte_offset];
-                let ch = if is_printable_ascii(byte) {
+                let ch = if is_sidebar_ascii(byte) {
                     byte as char
                 } else {
                     '.'
@@ -949,6 +955,7 @@ Press Enter, Escape or any normal key to clear errors.
                 self.resize()?;
             }
             Input::Character('e') => {
+                // toggle endianess
                 self.set_endian(match self.endian {
                     Endian::Big    => Endian::Little,
                     Endian::Little => Endian::Big,
@@ -956,10 +963,12 @@ Press Enter, Escape or any normal key to clear errors.
                 self.error = None;
             }
             Input::Character('i') => {
+                // toggle signedness
                 self.set_signed(!self.signed);
                 self.error = None;
             }
             Input::Character('s') => {
+                // toggle select mode
                 if self.selecting {
                     self.selecting = false;
                 } else {
@@ -971,7 +980,12 @@ Press Enter, Escape or any normal key to clear errors.
                 self.need_redraw = true;
                 self.error = None;
             }
-            Input::Character('S') => {
+            Input::Character('\n') if self.selecting => {
+                self.selecting = false;
+                self.need_redraw = true;
+                self.error = None;
+            }
+            Input::Character(ESCAPE) if self.selecting => {
                 self.selecting       = false;
                 self.selection_start = 0;
                 self.selection_end   = 0;
@@ -979,7 +993,51 @@ Press Enter, Escape or any normal key to clear errors.
                 self.view_mask_valid = false;
                 self.error = None;
             }
+            Input::Character('S') => {
+                // clear selection
+                self.selecting       = false;
+                self.selection_start = 0;
+                self.selection_end   = 0;
+                self.need_redraw     = true;
+                self.view_mask_valid = false;
+                self.error = None;
+            }
+            Input::Character('#') => {
+                // select ASCII line under cursor
+                let mem = self.mmap.mem();
+                let size = mem.len();
+                self.error = None;
+                if size > 0 {
+                    if !is_printable_ascii(mem[self.cursor]) {
+                        self.selecting = false;
+                        self.error = Some("No ASCII character under cursor".to_owned());
+                    }
+
+                    let mut start_index = self.cursor;
+                    while start_index > 0 {
+                        let index = start_index - 1;
+                        if !is_printable_ascii(mem[index]) {
+                            break;
+                        }
+                        start_index = index;
+                    }
+
+                    let mut end_index = self.cursor + 1;
+                    while end_index < size && is_printable_ascii(mem[end_index]) {
+                        end_index += 1;
+                    }
+
+                    self.cursor          = end_index - 1;
+                    self.selection_start = start_index;
+                    self.selection_end   = end_index;
+                    self.selecting       = true;
+                    self.need_redraw     = true;
+                    self.view_mask_valid = false;
+                    self.adjust_view();
+                }
+            }
             Input::Character('o') => {
+                // goto offset
                 self.file_input.blur()?;
                 self.search_widget.blur()?;
                 self.offset_input.set_value(self.cursor)?;
@@ -989,6 +1047,7 @@ Press Enter, Escape or any normal key to clear errors.
                 self.error = None;
             }
             Input::Character('f') | Input::KeyF3 => {
+                // search
                 self.error = None;
                 self.selecting = false;
                 self.file_input.blur()?;
@@ -1006,6 +1065,7 @@ Press Enter, Escape or any normal key to clear errors.
                 self.need_redraw = true;
             }
             Input::Character('F') => {
+                // clear search
                 self.error = None;
                 self.search_widget.blur()?;
                 self.search_data.clear();
@@ -1019,6 +1079,7 @@ Press Enter, Escape or any normal key to clear errors.
                 self.find_previous();
             }
             Input::Character('w') => {
+                // write selection to file
                 if self.selection_start < self.selection_end {
                     self.error = None;
                     self.selecting = false;
@@ -1032,12 +1093,14 @@ Press Enter, Escape or any normal key to clear errors.
                 self.need_redraw = true;
             }
             Input::Character('h') | Input::KeyF1 => {
+                // show help
                 self.selecting = false;
                 self.help_box.resize(&self.win_size)?;
                 self.help_shown  = true;
                 self.need_redraw = true;
             }
             Input::Character('q') | Input::Character(END_OF_TRANSMISSION) => {
+                // quit program
                 return Ok(false)
             }
             _input => {}
@@ -1061,6 +1124,10 @@ Press Enter, Escape or any normal key to clear errors.
                         Input::Character('h') | Input::KeyF1 => {
                             self.help_shown  = false;
                             self.need_redraw = true;
+
+                            // help draws over parts we don't otherwise paint to
+                            // (maybe use an actual ncurses window for help? dunno)
+                            self.clear_bottom_bar();
                         }
                         _input => {
                             match self.help_box.handle(input)? {
@@ -1069,8 +1136,12 @@ Press Enter, Escape or any normal key to clear errors.
                                 }
                                 TextBoxResult::Ignore => {}
                                 TextBoxResult::Quit => {
-                                    self.help_shown = false;
+                                    self.help_shown  = false;
                                     self.need_redraw = true;
+
+                                    // help draws over parts we don't otherwise paint to
+                                    // (maybe use an actual ncurses window for help? dunno)
+                                    self.clear_bottom_bar();
                                 }
                                 TextBoxResult::PropagateEvent => {
                                     if !self.handle(input)? {
@@ -1215,5 +1286,19 @@ Press Enter, Escape or any normal key to clear errors.
         }
 
         false
+    }
+
+    fn clear_bottom_bar(&mut self) {
+        let window = self.curses.window_mut();
+        let win_size = window.size();
+
+        if win_size.rows > 7 {
+            for y in (win_size.rows - 7)..win_size.rows {
+                let _ = window.move_to((y, 0));
+                for _ in 0..win_size.columns {
+                    let _ = window.put_char(' ');
+                }
+            }
+        }
     }
 }
