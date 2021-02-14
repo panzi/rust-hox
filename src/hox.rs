@@ -373,8 +373,8 @@ S ......... clear selection
 w ......... write selection to file
 f or F3 ... open search bar (and search for current selection)
 F ......... clear search
-n ......... find next
-p ......... find previous
+n or P .... find next
+p or N .... find previous
 # ......... select ASCII line under cursor
 
 Search
@@ -382,15 +382,18 @@ Search
 Enter or F3 ... find (next)
 F5 ............ switch through modes: Text/Binary/Integer
 Shift+F5 ...... switch through modes in reverse
-F6 ............ switch through integer sizes: 8/16/32/64
-F7 ............ toggle signed/unsigned
-F8 ............ toggle little endian/big endian
 Escape ........ stop search
 
 Non-Text Search
 ───────────────
 Escape or q ... stop search
-(and all other global hotkeys)
+(and all other global hotkeys that aren't allowed input characters)
+
+Integer Search
+──────────────
+F6 ... switch through integer sizes: 8/16/32/64
+F7 ... toggle signed/unsigned
+F8 ... toggle little endian/big endian
 
 Navigation
 ──────────
@@ -1053,20 +1056,21 @@ Press Enter, Escape or any normal key to clear errors.
                 self.selecting = false;
                 self.error = None;
             }
-            Input::Character('f') | Input::KeyF3 => {
+            Input::Character('f') | Input::Character('/') | Input::KeyF3 => {
                 // search
                 self.error = None;
                 self.selecting = false;
                 self.file_input.blur()?;
                 self.offset_input.blur()?;
                 if self.selection_end > self.selection_start {
-                    self.search_data.clear();
-                    self.search_data.extend(&self.mmap.mem()[self.selection_start..self.selection_end]);
-                    if self.search_data.iter().all(|byte| is_printable_ascii(*byte)) {
-                        self.search_widget.set_mode_and_value(SearchMode::String, &self.search_data)?;
+                    let search_data = &self.mmap.mem()[self.selection_start..self.selection_end];
+                    if search_data.iter().all(|byte| is_printable_ascii(*byte)) {
+                        self.search_widget.set_mode_and_value(SearchMode::String, search_data)?;
                     } else {
-                        self.search_widget.set_mode_and_value(SearchMode::Binary, &self.search_data)?;
+                        self.search_widget.set_mode_and_value(SearchMode::Binary, search_data)?;
                     }
+                } else {
+                    self.search_widget.set_value(&[])?;
                 }
                 self.search_widget.focus()?;
                 self.need_redraw = true;
@@ -1079,10 +1083,10 @@ Press Enter, Escape or any normal key to clear errors.
                 self.view_mask_valid = false;
                 self.need_redraw = true;
             }
-            Input::Character('n') => {
+            Input::Character('n') | Input::Character('P') => {
                 self.find_next();
             }
-            Input::Character('p') => {
+            Input::Character('p') | Input::Character('N') => {
                 self.find_previous();
             }
             Input::Character('w') => {

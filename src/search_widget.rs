@@ -788,6 +788,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                 }
 
                 if let Ok(bytes) = self.mode.parse(&self.buf) {
+                    self.focused = false;
                     return Ok(WidgetResult::Value(bytes));
                 }
                 return Ok(WidgetResult::Ignore);
