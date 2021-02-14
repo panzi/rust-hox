@@ -574,10 +574,19 @@ impl SearchWidget {
 
             self.mode = mode;
             self.cursor = self.buf.len();
-            if self.cursor > self.size {
-                self.view_offset = self.cursor - self.size;
-            } else {
-                self.view_offset = 0;
+            self.view_offset = 0;
+            self.adjust_view();
+        }
+    }
+
+    fn adjust_view(&mut self) {
+        if self.size <= 16 {
+            self.view_offset = 0;
+        } else {
+            let size = self.size - 16;
+
+            if self.cursor > self.view_offset + size {
+                self.view_offset = self.cursor - size;
             }
         }
     }
@@ -626,9 +635,8 @@ impl SearchWidget {
         self.mode = mode;
         self.buf  = mode.stringify(&value)?.chars().collect();
         self.cursor = self.buf.len();
-        if self.cursor > self.size {
-            self.view_offset = self.cursor - self.size;
-        }
+        self.view_offset = 0;
+        self.adjust_view();
 
         Ok(())
     }
@@ -642,9 +650,8 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
     fn set_value(&mut self, value: &[u8]) -> Result<()> {
         self.buf = self.mode.stringify(&value)?.chars().collect();
         self.cursor = self.buf.len();
-        if self.cursor > self.size {
-            self.view_offset = self.cursor - self.size;
-        }
+        self.view_offset = 0;
+        self.adjust_view();
 
         Ok(())
     }
@@ -666,6 +673,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
         // [ String     ]
         // [ UInt 64 LE ]
         if self.size <= 16 {
+            let _ = window.put_str(&"...             "[..self.size]);
             return Ok(());
         }
 
@@ -674,7 +682,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
 
         let mut len = buf.len();
 
-        let cursor_at_end = self.cursor == buf.len();
+        let cursor_at_end = self.cursor == len;
         if cursor_at_end {
             len += 1;
         }
@@ -682,26 +690,21 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
         let size = self.size - 16;
         if len > size {
             if self.view_offset > buf.len() {
+                // should not happen
                 self.draw(window, 0, &[])?;
             } else {
-                let mut index = self.view_offset;
+                let size = if cursor_at_end { size } else { size + 1 };
+                let buf = &buf[self.view_offset..min(self.view_offset + size, buf.len())];
 
-                if cursor_at_end {
-                    index += 1;
-                }
-
-                let mut end_index = index + size;
-                if cursor_at_end {
-                    end_index -= 1;
-                }
-                let buf = &buf[index..min(end_index, buf.len())];
-
-                let cursor = if self.cursor >= index {
-                    self.cursor - index
+                let cursor = if self.cursor >= self.view_offset {
+                    self.cursor - self.view_offset
                 } else {
                     0
                 };
                 self.draw(window, cursor, buf)?;
+                if buf.len() < size {
+                    window.put_char(' ')?;
+                }
             }
         } else {
             self.draw(window, self.cursor, &buf)?;
@@ -728,9 +731,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
             }
             Input::KeyEnd => {
                 self.cursor = self.buf.len();
-                if self.cursor > self.size {
-                    self.view_offset = self.cursor - self.size;
-                }
+                self.adjust_view();
                 return Ok(WidgetResult::Redraw);
             }
             Input::KeyLeft => {
@@ -756,9 +757,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                             self.cursor += 1;
                         }
                     }
-                    if self.cursor > self.size {
-                        self.view_offset = self.cursor - self.size;
-                    }
+                    self.adjust_view();
                     return Ok(WidgetResult::Redraw);
                 }
                 return Ok(WidgetResult::Ignore);
@@ -858,9 +857,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                         }
                     }
                 }
-                if self.cursor > self.size {
-                    self.view_offset = self.cursor - self.size;
-                }
+                self.adjust_view();
                 return Ok(WidgetResult::Redraw);
             }
             Input::KeyIC => {
@@ -972,9 +969,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                 self.future.push_front(self.buf.clone());
                 self.buf = self.history.pop_back().unwrap();
                 self.cursor = self.buf.len();
-                if self.cursor > self.size {
-                    self.view_offset = self.cursor - self.size;
-                }
+                self.adjust_view();
 
                 return Ok(WidgetResult::Redraw);
             }
@@ -985,9 +980,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                 self.history.push_back(self.buf.clone());
                 self.buf = self.future.pop_front().unwrap();
                 self.cursor = self.buf.len();
-                if self.cursor > self.size {
-                    self.view_offset = self.cursor - self.size;
-                }
+                self.adjust_view();
 
                 return Ok(WidgetResult::Redraw);
             }
@@ -1000,9 +993,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
 
     fn resize(&mut self, size: &Dimension) -> Result<()> {
         self.size = size.columns as usize;
-        if self.cursor > self.size {
-            self.view_offset = self.cursor - self.size;
-        }
+        self.adjust_view();
         Ok(())
     }
 }

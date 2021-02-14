@@ -28,24 +28,58 @@ Features
 --------
 
 * resizes to window
-* decode bytes at curser as 8, 16, 32, and 64 bit integers, you can choose
-  signed/unsinged, little/big endian
+* decode bytes at curser as 8, 16, 32, and 64 bit integers, 32 and 64 bit
+  floating point numbers, you can choose signed/unsinged, little/big endian
 * jump to user supplied offset
 * support large files via mmap()
 
-TODO
+Help
 ----
 
-* [x] search
-  * [x] input for ASCII/UTF-8 text
-  * [x] input for binary (hex input)
-  * [x] input for integers
-  * [x] actual search (forward/backward)
-* [x] save selection to file
-* [x] display errors invlolving the above
-* [x] highlight same as selection
-* [x] help pop-up
-* [x] choose license (probably GPLv3)
+```plain
+Hotkeys
+═══════
+h or F1 ... show this help message
+q ......... quit
+e ......... toggle between big and little endian
+i ......... toggle between signed and unsinged
+o ......... enter offset to jump to
+s ......... toggle select mode
+S ......... clear selection
+w ......... write selection to file
+f or F3 ... open search bar (and search for current selection)
+F ......... clear search
+n ......... find next
+p ......... find previous
+# ......... select ASCII line under cursor
+
+Search
+──────
+Enter or F3 ... find (next)
+F5 ............ switch through modes: Text/Binary/Integer
+Shift+F5 ...... switch through modes in reverse
+F6 ............ switch through integer sizes: 8/16/32/64
+F7 ............ toggle signed/unsigned
+F8 ............ toggle little endian/big endian
+Escape ........ stop search
+
+Non-Text Search
+───────────────
+Escape or q ... stop search
+(and all other global hotkeys)
+
+Navigation
+──────────
+← ↑ ↓ → ..... move cursor
+Home ........ move cursor to start of line
+End ......... move cursor to end of line
+Ctr+Home .... move cursor to start of file
+Ctr+End ..... move cursor to end of file
+Page Up ..... move view up one page
+Page Down ... move view down one page
+
+Press Enter, Escape or any normal key to clear errors.
+```
 
 GPLv3 License
 -------------
