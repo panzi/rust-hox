@@ -30,10 +30,9 @@ use hox::{Hox, Endian};
 
 fn main() -> Result<()> {
     let args = App::new("Hox - Hex viewer written in Rust")
-        .version("0.1.0")
+        .version("1.0.0")
         .author("Mathias Panzenböck <grosser.meister.morti@gmx.net>")
-        
-        // TODO: make this changeable at runtime
+
         .arg(Arg::with_name("endian")
             .long("endian")
             .short("e")
