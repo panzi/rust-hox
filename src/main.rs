@@ -25,10 +25,10 @@ mod text_box;
 mod search_widget;
 mod consts;
 
-use result::{Result, Error};
+use result::Result;
 use hox::{Hox, Endian};
 
-fn main() -> Result<()> {
+fn main() {
     let args = App::new("Hox - Hex viewer written in Rust")
         .version("1.0.0")
         .author("Mathias Panzenböck <grosser.meister.morti@gmx.net>")
@@ -51,32 +51,26 @@ fn main() -> Result<()> {
             .value_name("FILE"))
         .get_matches();
 
-    let filename = match args.value_of("file") {
-        Some(filename) => filename,
-        None => return Err(Error::message("argument FILE is required")),
-    };
+    let filename = args.value_of("file").unwrap();
 
     let endian = args.value_of("endian").unwrap();
-
     let endian = if endian.eq_ignore_ascii_case("little") {
         Endian::Little
     } else if endian.eq_ignore_ascii_case("big") {
         Endian::Big
     } else {
-        return Err(Error::message(format!("illegal value for --endian: {:?}", endian)));
+        eprintln!("Error: illegal value for --endian: {:?}", endian);
+        std::process::exit(1);
     };
 
     let signed = args.is_present("signed");
 
-    match run(filename, endian, signed) {
-        Ok(()) => Ok(()),
-        Err(error) => {
-            if error.path().is_none() {
-                return Err(error.with_path(filename));
-            } else {
-                return Err(error);
-            }
+    if let Err(mut error) = run(filename, endian, signed) {
+        if error.path().is_none() {
+            error = error.with_path(filename);
         }
+        eprintln!("Error: {}", error);
+        std::process::exit(1);
     }
 }
 
