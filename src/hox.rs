@@ -25,6 +25,13 @@ pub enum Endian {
     Little,
 }
 
+const MASK_SEARCH:          u8 =  1;
+const MASK_SEARCH_END:      u8 =  2;
+const MASK_HIGHLIGHT:       u8 =  4;
+const MASK_HIGHLIGHT_END:   u8 =  8;
+const MASK_SELECTED:        u8 = 16;
+const MASK_SELECTED_END:    u8 = 32;
+
 const FILE_INPUT_LABEL: &str = "Filename: ";
 const SEARCH_LABEL: &str = "Search: ";
 
@@ -198,6 +205,47 @@ fn hex_len(mut num: usize) -> usize {
     len
 }
 
+
+fn set_search_mask(view_mask: &mut [u8], view_offset: usize, mem: &[u8], needle: &[u8], mask_match: u8, mask_end: u8) {
+    let needle_len = needle.len();
+    if needle_len > 0 {
+        let view_size = view_mask.len();
+        let size = mem.len();
+        let start_offset = if view_offset > (needle_len - 1) {
+            view_offset + 1 - needle_len
+        } else {
+            0
+        };
+        let end_offset = view_offset + view_size + needle_len - 1;
+        let end_offset = if end_offset <= size {
+            end_offset
+        } else {
+            size + 1 - needle_len
+        };
+
+        let view_end_offset = min(view_offset + view_size, size);
+        for offset in start_offset..end_offset {
+            if &mem[offset..offset + needle_len] == needle {
+                let match_offset_start = max(view_offset, offset);
+                let match_offset_end   = min(view_end_offset, offset + needle_len);
+
+                let first_view_index = match_offset_start - view_offset;
+                let last_view_index  = match_offset_end - view_offset - 1;
+
+                if first_view_index < last_view_index {
+                    for item in &mut view_mask[first_view_index..last_view_index] {
+                        *item = (*item & !mask_end) | mask_match;
+                    }
+                }
+
+                if view_mask[last_view_index] & mask_match == 0 {
+                    view_mask[last_view_index] |= mask_end | mask_match;
+                }
+            }
+        }
+    }
+}
+
 pub struct Hox<'a> {
     mmap: MMap<'a>,
     curses:   Curses,
@@ -215,13 +263,15 @@ pub struct Hox<'a> {
     endian: Endian,
     signed: bool,
     selecting: bool,
-    matchmap: Vec<bool>,
+    view_mask: Vec<u8>,
+    view_mask_valid: bool,
     offset_input: NumberInput<usize>,
     file_input: FileInput,
     help_box: TextBox<'a>,
     help_shown: bool,
     error: Option<String>,
     search_widget: SearchWidget,
+    search_data: Vec<u8>,
 }
 
 impl<'a> Hox<'a> {
@@ -250,17 +300,19 @@ impl<'a> Hox<'a> {
 
         let colors = curses.color_mut();
 
-        colors.set_color_pair(PAIR_NORMAL             as i16, COLOR_WHITE, COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_INVERTED           as i16, COLOR_BLACK, COLOR_WHITE)?;
-        colors.set_color_pair(PAIR_OFFSETS            as i16, 130,         COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_NON_ASCII          as i16, 239,         COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_CURSOR             as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_SELECTION          as i16, COLOR_BLACK, COLOR_BLUE)?;
-        colors.set_color_pair(PAIR_SELECTED_CURSOR    as i16, COLOR_WHITE, 128)?;
-        colors.set_color_pair(PAIR_INPUT_ERROR        as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_MATCH              as i16, COLOR_WHITE, 236)?;
-        colors.set_color_pair(PAIR_AUTO_COMPLETE      as i16, 235,         COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_ERROR_MESSAGE      as i16, COLOR_RED,   COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_WHITE, COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_BLACK, COLOR_WHITE)?;
+        colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_NON_ASCII           as i16, 239,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
+        colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_BLACK, COLOR_BLUE)?;
+        colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE, 128)?;
+        colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
+        colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE, 236)?;
+        colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 235,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK, 202)?;
+        colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK, 197)?;
         
         Ok(Self {
             mmap,
@@ -279,38 +331,60 @@ impl<'a> Hox<'a> {
             endian: Endian::Little,
             signed: false,
             selecting: false,
-            matchmap: Vec::new(),
+            view_mask: Vec::new(),
+            view_mask_valid: false,
             offset_input: NumberInput::<usize>::new(16),
             file_input: FileInput::new(0),
             help_box: TextBox::new("\
-Shortcuts
-═════════
-
-h ... show this help message
-q ... quit
-e ... toggle between big and little endian
-i ... toggle between signed and unsinged
-o ... enter offset to jump to
-s ... toggle select mode
-S ... clear selection
-w ... write selection to file
-f ... search (not implemented yet)
+Hotkeys
+═══════
+h or F1 ... show this help message
+q ......... quit
+e ......... toggle between big and little endian
+i ......... toggle between signed and unsinged
+o ......... enter offset to jump to
+s ......... toggle select mode
+S ......... clear selection
+w ......... write selection to file
+f or F3 ... open search bar (and search for current selection)
+F ......... clear search
+n ......... find next
+p ......... find previous
 
 Search
 ──────
+Enter or F3 ... find (next)
+F5 ............ switch through modes: Text/Binary/Integer
+Shift+F5 ...... switch through modes in reverse
+F6 ............ switch through integer sizes: 8/16/32/64
+F7 ............ toggle signed/unsigned
+F8 ............ toggle little endian/big endian
+Escape ........ stop search
 
-F3 .... search
-F5 .... switch through modes: String/Binary/Integer
-F6 .... switch through integer sizes: 8/16/32/64
-F7 .... toggle signed/unsigned
-F8 .... toggle little endian/big endian
-ESC ... stop search
+Non-Text Search
+───────────────
+Escape or q ... stop search
+(and all other global hotkeys)
+
+Navigation
+──────────
+← ↑ ↓ → ..... move cursor
+Home ........ move cursor to start of line
+End ......... move cursor to end of line
+Ctr+Home .... move cursor to start of file
+Ctr+End ..... move cursor to end of file
+Page Up ..... move view up one page
+Page Down ... move view down one page
+
+Press Enter, Escape or any normal key to clear errors.
+
 
 © 2021 Mathias Panzenböck", 2, 1,
             ),
             help_shown: false,
             error: None,
             search_widget: SearchWidget::new(0),
+            search_data: Vec::new(),
         })
     }
 
@@ -393,38 +467,36 @@ ESC ... stop search
         let mem = self.mmap.mem();
         let size = mem.len();
 
-        // TODO: do this on selection and viewport change, not on render?
-        for item in self.matchmap.iter_mut() {
-            *item = false;
-        }
-        if self.selection_start < self.selection_end {
-            let needle = &mem[self.selection_start..self.selection_end];
-            let needle_len = needle.len();
-            let start_offset = if self.view_offset > (needle_len - 1) {
-                self.view_offset + 1 - needle_len
+        if !self.view_mask_valid {
+            // TODO: invalidate view_mask in viewer cases
+            self.view_mask.resize(self.view_size, 0);
+            for item in self.view_mask.iter_mut() {
+                *item = 0;
+            }
+
+            let mask_selection_start_offset = if self.view_offset < self.selection_start {
+                self.selection_start - self.view_offset
             } else {
                 0
             };
-            let end_offset = self.view_offset + self.view_size + needle_len - 1;
-            let end_offset = if end_offset <= size {
-                end_offset
-            } else {
-                size + 1 - needle_len
-            };
-
-            let view_end_offset = min(self.view_offset + self.view_size, size);
-            for offset in start_offset..end_offset {
-                if &mem[offset..offset + needle_len] == needle {
-                    for match_offset in max(self.view_offset, offset)..min(view_end_offset, offset + needle_len) {
-                        self.matchmap[match_offset - self.view_offset] = true;
+            if mask_selection_start_offset < self.view_size && self.selection_end > self.view_offset {
+                let mask_selection_end_offset = min(self.selection_end - self.view_offset, self.view_size);
+                if mask_selection_end_offset > mask_selection_start_offset {
+                    for item in &mut self.view_mask[mask_selection_start_offset..mask_selection_end_offset] {
+                        *item = MASK_SELECTED;
                     }
+                    self.view_mask[mask_selection_end_offset - 1] = MASK_SELECTED | MASK_SELECTED_END;
                 }
             }
+
+            set_search_mask(&mut self.view_mask, self.view_offset, &mem, &mem[self.selection_start..self.selection_end], MASK_HIGHLIGHT, MASK_HIGHLIGHT_END);
+            set_search_mask(&mut self.view_mask, self.view_offset, &mem, &self.search_data, MASK_SEARCH, MASK_SEARCH_END);
+
+            self.view_mask_valid = true;
         }
 
         let view_end_offset = min(self.view_offset + self.view_size, size);
 
-        // TODO: auto search selection
         let buf = &mut self.buf;
         let mut line = 0;
         for row_offset in (self.view_offset..view_end_offset).step_by(self.bytes_per_row) {
@@ -441,66 +513,73 @@ ESC ... stop search
             let overflow_offset = row_offset + self.bytes_per_row;
             let end_byte_offset = min(overflow_offset, size);
 
-            for byte_offset in row_offset..end_byte_offset {
-                let match_index = byte_offset - self.view_offset;
-                let is_match = self.matchmap[match_index];
-                let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
+            let mut byte_offset = row_offset;
+            if byte_offset < end_byte_offset {
+                loop {
+                    let mask_index = byte_offset - self.view_offset;
+                    let mask = self.view_mask[mask_index];
 
-                let byte = mem[byte_offset];
-                buf.clear();
-                write!(buf, "{:02X}", byte)?;
+                    let byte = mem[byte_offset];
+                    buf.clear();
+                    write!(buf, "{:02X}", byte)?;
 
-                if byte_offset == self.cursor {
-                    let attrs = if is_selected {
-                        ColorPair(PAIR_SELECTED_CURSOR)
+                    if byte_offset == self.cursor {
+                        let attrs = if mask & MASK_SELECTED != 0 {
+                            ColorPair(PAIR_SELECTED_CURSOR)
+                        } else if mask & MASK_SEARCH != 0 {
+                            ColorPair(PAIR_SEARCH_MATCH_CURSOR)
+                        } else {
+                            ColorPair(PAIR_CURSOR)
+                        };
+
+                        window.turn_on_attributes(attrs)?;
+                        window.put_str(&buf)?;
+
+                        let attrs = if mask & MASK_SELECTED != 0 {
+                            ColorPair(PAIR_SELECTION)
+                        } else if mask & MASK_SEARCH != 0 {
+                            ColorPair(PAIR_SEARCH_MATCH)
+                        } else if mask & MASK_HIGHLIGHT != 0 {
+                            ColorPair(PAIR_SELECTION_MATCH)
+                        } else {
+                            ColorPair(PAIR_NORMAL)
+                        };
+                        window.turn_on_attributes(attrs)?;
                     } else {
-                        ColorPair(PAIR_CURSOR)
+                        let attrs = if mask & MASK_SELECTED != 0 {
+                            ColorPair(PAIR_SELECTION)
+                        } else if mask & MASK_SEARCH != 0 {
+                            ColorPair(PAIR_SEARCH_MATCH)
+                        } else if mask & MASK_HIGHLIGHT != 0 {
+                            ColorPair(PAIR_SELECTION_MATCH)
+                        } else {
+                            ColorPair(PAIR_NORMAL)
+                        };
+
+                        window.turn_on_attributes(attrs)?;
+                        window.put_str(&buf)?;
+                    }
+
+                    byte_offset += 1;
+                    if byte_offset == end_byte_offset {
+                        window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
+                        window.put_char(' ')?;
+                        break;
+                    }
+
+                    let attrs = if mask & (MASK_SELECTED | MASK_SELECTED_END) == MASK_SELECTED {
+                        ColorPair(PAIR_SELECTION)
+                    } else if mask & (MASK_SEARCH | MASK_SEARCH_END) == MASK_SEARCH {
+                        ColorPair(PAIR_SEARCH_MATCH)
+                    } else if mask & (MASK_HIGHLIGHT | MASK_HIGHLIGHT_END) == MASK_HIGHLIGHT {
+                        ColorPair(PAIR_SELECTION_MATCH)
+                    } else {
+                        ColorPair(PAIR_NORMAL)
                     };
+
                     window.turn_on_attributes(attrs)?;
-                    window.put_str(&buf)?;
-                    window.turn_off_attributes(attrs)?;
-
-                    if is_selected {
-                        if byte_offset + 1 < self.selection_end {
-                            window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
-                        } else if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
-                            window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                        }
-                    } else if is_match {
-                        if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
-                            window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                        }
-                    }
-                } else {
-                    if is_selected {
-                        if byte_offset == row_offset || byte_offset == self.selection_start {
-                            window.turn_on_attributes(ColorPair(PAIR_SELECTION))?;
-                        }
-                    } else if is_match {
-                        if byte_offset == row_offset || match_index == 0 || !self.matchmap[match_index - 1] {
-                            window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                        }
-                    }
-
-                    window.put_str(&buf)?;
-
-                    if byte_offset + 1 >= self.selection_end || byte_offset + 1 == end_byte_offset {
-                        if byte_offset + 1 < end_byte_offset && self.matchmap[match_index + 1] {
-                            if is_match {
-                                window.turn_on_attributes(ColorPair(PAIR_MATCH))?;
-                            }
-                        } else if is_selected {
-                            window.turn_off_attributes(ColorPair(PAIR_SELECTION))?;
-                        } else if is_match {
-                            window.turn_off_attributes(ColorPair(PAIR_MATCH))?;
-                        }
-                    } else if byte_offset + 1 >= end_byte_offset || !self.matchmap[match_index + 1] {
-                        if is_match {
-                            window.turn_off_attributes(ColorPair(PAIR_MATCH))?;
-                        }
-                    }
+                    window.put_char(' ')?;
                 }
-                window.put_char(' ')?;
             }
 
             for _ in end_byte_offset..overflow_offset {
@@ -508,41 +587,42 @@ ESC ... stop search
             }
 
             window.put_char(' ')?;
-            for byte_offset in row_offset..end_byte_offset {
-                let match_index = byte_offset - self.view_offset;
-                let is_match = self.matchmap[match_index];
-                let is_selected = byte_offset >= self.selection_start && byte_offset < self.selection_end;
-                let byte = mem[byte_offset];
 
-                buf.clear();
-                let is_ascii = byte >= 0x20 && byte <= 0x7e;
-                if is_ascii {
-                    buf.push(byte as char);
+            for byte_offset in row_offset..end_byte_offset {
+                let mask_index = byte_offset - self.view_offset;
+                let mask = self.view_mask[mask_index];
+
+                let byte = mem[byte_offset];
+                let ch = if byte >= 0x20 && byte <= 0x7e {
+                    byte as char
                 } else {
-                    buf.push('.');
-                }
+                    '.'
+                };
 
                 let attrs = if byte_offset == self.cursor {
-                    if is_selected {
+                    if mask & MASK_SELECTED != 0 {
                         ColorPair(PAIR_SELECTED_CURSOR)
+                    } else if mask & MASK_SEARCH != 0 {
+                        ColorPair(PAIR_SEARCH_MATCH_CURSOR)
                     } else {
                         ColorPair(PAIR_CURSOR)
                     }
                 } else {
-                    if is_selected {
+                    if mask & MASK_SELECTED != 0 {
                         ColorPair(PAIR_SELECTION)
-                    } else if is_match {
-                        ColorPair(PAIR_MATCH)
-                    } else if !is_ascii {
-                        ColorPair(PAIR_NON_ASCII)
+                    } else if mask & MASK_SEARCH != 0 {
+                        ColorPair(PAIR_SEARCH_MATCH)
+                    } else if mask & MASK_HIGHLIGHT != 0 {
+                        ColorPair(PAIR_SELECTION_MATCH)
                     } else {
                         ColorPair(PAIR_NORMAL)
                     }
                 };
 
                 window.turn_on_attributes(attrs)?;
-                window.put_str(&buf)?;
+                window.put_char(ch)?;
             }
+
             window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
 
             for _ in end_byte_offset..overflow_offset {
@@ -675,13 +755,7 @@ ESC ... stop search
         let _ = put_label(window, buf);
 
         window.move_to((self.win_size.rows - 7, 0))?;
-        if self.file_input.has_focus() {
-            window.put_str(FILE_INPUT_LABEL)?;
-            self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
-        } else if self.search_widget.has_focus() {
-            window.put_str(SEARCH_LABEL)?;
-            self.search_widget.redraw(window, (self.win_size.rows - 7, SEARCH_LABEL.len() as i32))?;
-        } else if let Some(error) = &self.error {
+        if let Some(error) = &self.error {
             let mut error = error.replace('\n', " ");
             error.insert_str(0, "Error: ");
             let count = error.chars().count();
@@ -691,6 +765,12 @@ ESC ... stop search
             for _ in count..self.win_size.columns as usize {
                 window.put_char(' ')?;
             }
+        } else if self.file_input.has_focus() {
+            window.put_str(FILE_INPUT_LABEL)?;
+            self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+        } else if self.search_widget.has_focus() {
+            window.put_str(SEARCH_LABEL)?;
+            self.search_widget.redraw(window, (self.win_size.rows - 7, SEARCH_LABEL.len() as i32))?;
         } else {
             for _ in 0..self.win_size.columns {
                 window.put_char(' ')?;
@@ -741,8 +821,6 @@ ESC ... stop search
                 self.view_size = self.bytes_per_row * view_rows;
             }
 
-            self.matchmap.resize(self.view_size, false);
-
             self.adjust_view();
         }
 
@@ -759,6 +837,7 @@ ESC ... stop search
                 self.need_redraw = true;
             }
         }
+        self.view_mask_valid = false;
     }
 
     fn handle(&mut self, input: Input) -> Result<bool> {
@@ -801,13 +880,13 @@ ESC ... stop search
                 }
                 self.error = None;
             }
-            Input::Character('\u{18}') => { // Ctrl+Home
+            Input::Character(CANCEL) => { // Ctrl+Home
                 if self.cursor != 0 {
                     self.set_cursor(0);
                 }
                 self.error = None;
             }
-            Input::Character('\u{13}') => { // Ctrl+End
+            Input::Character(DEVICE_CONTROL3) => { // Ctrl+End
                 let size = self.mmap.size();
                 if size > 0 {
                     self.set_cursor(size - 1);
@@ -867,15 +946,17 @@ ESC ... stop search
                     self.selection_start = self.cursor;
                     self.selection_end   = self.cursor + 1;
                     self.selecting       = true;
+                    self.view_mask_valid = false;
                 }
                 self.need_redraw = true;
                 self.error = None;
             }
             Input::Character('S') => {
-                self.selecting = false;
+                self.selecting       = false;
                 self.selection_start = 0;
                 self.selection_end   = 0;
-                self.need_redraw = true;
+                self.need_redraw     = true;
+                self.view_mask_valid = false;
                 self.error = None;
             }
             Input::Character('o') => {
@@ -884,25 +965,53 @@ ESC ... stop search
                 self.offset_input.set_value(self.cursor)?;
                 self.offset_input.focus()?;
                 self.need_redraw = true;
+                self.selecting = false;
                 self.error = None;
             }
             Input::Character('f') | Input::KeyF3 => {
                 self.error = None;
-                self.search_widget.set_search_mode(SearchMode::Binary);
+                self.selecting = false;
                 self.file_input.blur()?;
                 self.offset_input.blur()?;
+                if self.selection_end > self.selection_start {
+                    self.search_data.clear();
+                    self.search_data.extend(&self.mmap.mem()[self.selection_start..self.selection_end]);
+                    if self.search_data.iter().all(|byte| *byte >= 0x20 && *byte <= 0x7e) {
+                        self.search_widget.set_mode_and_value(SearchMode::String, &self.search_data)?;
+                    } else {
+                        self.search_widget.set_mode_and_value(SearchMode::Binary, &self.search_data)?;
+                    }
+                }
                 self.search_widget.focus()?;
                 self.need_redraw = true;
             }
-            Input::Character('w') => {
+            Input::Character('F') => {
                 self.error = None;
                 self.search_widget.blur()?;
-                self.offset_input.blur()?;
-                self.file_input.set_value("")?;
-                self.file_input.focus()?;
+                self.search_data.clear();
+                self.need_redraw = true;
+            }
+            Input::Character('n') => {
+                self.find_next();
+            }
+            Input::Character('p') => {
+                self.find_previous();
+            }
+            Input::Character('w') => {
+                if self.selection_start < self.selection_end {
+                    self.error = None;
+                    self.selecting = false;
+                    self.search_widget.blur()?;
+                    self.offset_input.blur()?;
+                    self.file_input.set_value("")?;
+                    self.file_input.focus()?;
+                } else {
+                    self.error = Some("Nothing selected".to_owned());
+                }
                 self.need_redraw = true;
             }
             Input::Character('h') | Input::KeyF1 => {
+                self.selecting = false;
                 self.help_box.resize(&self.win_size)?;
                 self.help_shown  = true;
                 self.need_redraw = true;
@@ -950,6 +1059,18 @@ ESC ... stop search
                             }
                         }
                     }
+                } else if self.error.is_some() {
+                    match input {
+                        Input::Character(ch) if ch != 'h' => {
+                            self.error = None;
+                            self.need_redraw = true;
+                        }
+                        _ => {
+                            if !self.handle(input)? {
+                                break;
+                            }
+                        }
+                    }
                 } else if self.file_input.has_focus() {
                     match self.file_input.handle(input)? {
                         WidgetResult::PropagateEvent => {
@@ -990,8 +1111,10 @@ ESC ... stop search
                             self.need_redraw = true;
                         }
                         WidgetResult::Value(bytes) => {
-                            // TODO: implement search
-                            eprintln!("TODO: implement search {:?}", bytes);
+                            self.search_data = bytes;
+                            self.view_mask_valid = false;
+                            self.need_redraw = true;
+                            self.find_next();
                         }
                         WidgetResult::Ignore => {}
                     }
@@ -1019,5 +1142,57 @@ ESC ... stop search
         }
 
         Ok(())
+    }
+
+    fn find_next(&mut self) -> bool {
+        let search_data = &self.search_data[..];
+        let search_size = search_data.len();
+        if search_size > 0 {
+            let size = self.mmap.size();
+            self.need_redraw = true;
+            if search_size <= size {
+                let mem = self.mmap.mem();
+                let start_offset = self.cursor + 1;
+                let end_offset = size - search_size + 1;
+                for offset in start_offset..end_offset {
+                    if &mem[offset..offset + search_size] == search_data {
+                        self.error = None;
+                        self.set_cursor(offset);
+                        return true;
+                    }
+                }
+            }
+            self.error = Some("Pattern not found searching forwards".to_owned());
+        }
+
+        false
+    }
+
+    fn find_previous(&mut self) -> bool {
+        let search_data = &self.search_data[..];
+        let search_size = search_data.len();
+        if search_size > 0 {
+            let size = self.mmap.size();
+            self.need_redraw = true;
+            if self.cursor > 0 {
+                let mem = self.mmap.mem();
+                let start_offset = min(self.cursor - 1, size - search_size);
+                let mut offset = start_offset;
+                loop {
+                    if &mem[offset..offset + search_size] == search_data {
+                        self.error = None;
+                        self.set_cursor(offset);
+                        return true;
+                    }
+                    if offset == 0 {
+                        break;
+                    }
+                    offset -= 1;
+                }
+            }
+            self.error = Some("Pattern not found searching backwards".to_owned());
+        }
+
+        false
     }
 }

@@ -69,7 +69,7 @@ pub enum SearchMode {
 impl Display for SearchMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SearchMode::String => "String".fmt(f),
+            SearchMode::String => "Text".fmt(f),
             SearchMode::Binary => "Binary".fmt(f),
             SearchMode::Integer(size, sign, endian) => {
                 match sign {
@@ -385,6 +385,14 @@ impl SearchMode {
         }
     }
 
+    pub fn prev_major(&self) -> Self {
+        match self {
+            SearchMode::String => SearchMode::Integer(IntSize::I64, Sign::Signed, Endian::Little),
+            SearchMode::Binary => SearchMode::String,
+            SearchMode::Integer(_, _, _) => SearchMode::Binary,
+        }
+    }
+
     pub fn next_size(&self) -> Self {
         match self {
             SearchMode::Integer(size, sign, endian) => {
@@ -584,16 +592,31 @@ impl SearchWidget {
 
         Ok(())
     }
+
+    #[allow(unused)]
+    pub fn value(&self) -> Result<Vec<u8>> {
+        self.mode.parse(&self.buf)
+    }
+
+    pub fn set_mode_and_value(&mut self, mode: SearchMode, value: &[u8]) -> Result<()> {
+        self.mode = mode;
+        self.buf  = mode.stringify(&value)?.chars().collect();
+        self.cursor = self.buf.len();
+        if self.cursor > self.size {
+            self.view_offset = self.cursor - self.size;
+        }
+
+        Ok(())
+    }
 }
 
-impl InputWidget<&str, Vec<u8>> for SearchWidget {
+impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
     fn has_focus(&self) -> bool {
         self.focused
     }
 
-    fn set_value(&mut self, value: &str) -> Result<()> {
-        let bytes = self.mode.parse(&value.chars().collect::<Vec<_>>())?;
-        self.buf = self.mode.stringify(&bytes)?.chars().collect();
+    fn set_value(&mut self, value: &[u8]) -> Result<()> {
+        self.buf = self.mode.stringify(&value)?.chars().collect();
         self.cursor = self.buf.len();
         if self.cursor > self.size {
             self.view_offset = self.cursor - self.size;
@@ -699,6 +722,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                     }
                     return Ok(WidgetResult::Redraw);
                 }
+                return Ok(WidgetResult::Ignore);
             }
             Input::KeyRight => {
                 if self.cursor < self.buf.len() {
@@ -713,6 +737,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                     }
                     return Ok(WidgetResult::Redraw);
                 }
+                return Ok(WidgetResult::Ignore);
             }
             Input::Character(ESCAPE) | Input::Character(END_OF_TRANSMISSION) => {
                 self.focused = false;
@@ -742,6 +767,10 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                     return Ok(WidgetResult::Value(bytes));
                 }
                 return Ok(WidgetResult::Ignore);
+            }
+            Input::Character(END_OF_MEDIUM) => {
+                self.set_search_mode(self.mode.prev_major());
+                return Ok(WidgetResult::Redraw);
             }
             Input::Character(mut ch) => {
                 let cp = ch as u32;
@@ -830,6 +859,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                     }
                     return Ok(WidgetResult::Redraw);
                 }
+                return Ok(WidgetResult::Ignore);
             }
             Input::KeyDC => {
                 if self.cursor < self.buf.len() {
@@ -855,6 +885,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                     }
                     return Ok(WidgetResult::Redraw);
                 }
+                return Ok(WidgetResult::Ignore);
             }
             Input::KeyBackspace => {
                 if self.cursor > 0 {
@@ -888,6 +919,7 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                     }
                     return Ok(WidgetResult::Redraw);
                 }
+                return Ok(WidgetResult::Ignore);
             }
             Input::KeyF5 => {
                 self.set_search_mode(self.mode.next_major());
@@ -904,6 +936,9 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
             Input::KeyF8 => {
                 self.set_search_mode(self.mode.next_endian());
                 return Ok(WidgetResult::Redraw);
+            }
+            Input::KeyUp | Input::KeyDown => {
+                return Ok(WidgetResult::Ignore);
             }
             /* history only works for correct mode
             Input::KeyUp => {
@@ -937,8 +972,6 @@ impl InputWidget<&str, Vec<u8>> for SearchWidget {
                 return Ok(WidgetResult::PropagateEvent);
             }
         }
-
-        return Ok(WidgetResult::Ignore);
     }
 
     fn resize(&mut self, size: &Dimension) -> Result<()> {

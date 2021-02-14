@@ -29,14 +29,23 @@ impl<'a> MMap<'a> {
         }
     }
 
+    #[inline]
     pub fn size(&self) -> usize {
         self.size
     }
 
+    #[inline]
     pub fn mem(&self) -> &[u8] {
         unsafe {
             std::ptr::slice_from_raw_parts::<u8>(self.ptr.cast(), self.size).as_ref().unwrap()
         }
+    }
+}
+
+impl<'a> AsRef<[u8]> for MMap<'a> {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.mem()
     }
 }
 
