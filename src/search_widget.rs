@@ -22,7 +22,7 @@ use pancurses_result::{Window, Point, Input, ColorPair, Dimension};
 use crate::input_widget::{InputWidget, WidgetResult};
 use crate::result::{Result, Error};
 use crate::consts::*;
-use crate::hox::Endian;
+use crate::hox::{Endian, is_printable_ascii};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum IntSize {
@@ -467,7 +467,16 @@ impl SearchWidget {
     pub fn set_search_mode(&mut self, mode: SearchMode) {
         if self.mode != mode {
             match mode {
-                SearchMode::String => { /* keep */ },
+                SearchMode::String => {
+                    if self.mode == SearchMode::Binary {
+                        if let Ok(bytes) = self.mode.parse(&self.buf) {
+                            if bytes.iter().all(|byte| is_printable_ascii(*byte)) {
+                                self.buf = bytes.iter().map(|byte| *byte as char).collect();
+                            }
+                        }
+                    }
+                    // else keep it
+                }
                 SearchMode::Binary => {
                     match self.mode {
                         SearchMode::String => {

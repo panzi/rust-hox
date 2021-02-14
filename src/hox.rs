@@ -50,6 +50,11 @@ const MASK_SELECTED_END:    u8 = 32;
 const FILE_INPUT_LABEL: &str = "Filename: ";
 const SEARCH_LABEL: &str = "Search: ";
 
+#[inline]
+pub fn is_printable_ascii(byte: u8) -> bool {
+    byte >= 0x20 && byte <= 0x7e
+}
+
 fn put_label(window: &mut Window, text: &str) -> Result<()> {
     let mut slice = text;
     while slice.len() > 0 {
@@ -608,7 +613,7 @@ Press Enter, Escape or any normal key to clear errors.
                 let mask = self.view_mask[mask_index];
 
                 let byte = mem[byte_offset];
-                let ch = if byte >= 0x20 && byte <= 0x7e {
+                let ch = if is_printable_ascii(byte) {
                     byte as char
                 } else {
                     '.'
@@ -991,7 +996,7 @@ Press Enter, Escape or any normal key to clear errors.
                 if self.selection_end > self.selection_start {
                     self.search_data.clear();
                     self.search_data.extend(&self.mmap.mem()[self.selection_start..self.selection_end]);
-                    if self.search_data.iter().all(|byte| *byte >= 0x20 && *byte <= 0x7e) {
+                    if self.search_data.iter().all(|byte| is_printable_ascii(*byte)) {
                         self.search_widget.set_mode_and_value(SearchMode::String, &self.search_data)?;
                     } else {
                         self.search_widget.set_mode_and_value(SearchMode::Binary, &self.search_data)?;
