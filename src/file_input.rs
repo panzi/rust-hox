@@ -356,12 +356,14 @@ impl InputWidget<&str, PathBuf> for FileInput {
                     std::mem::swap(&mut future, &mut self.future);
                     self.history.extend(future.into_iter());
                 }
-                if self.history.is_empty() {
-                    self.history.push_back(self.buf.clone());
-                } else if self.history[self.history.len() - 1] != self.buf {
-                    if self.history.len() == 1024 {
-                        self.history.pop_front();
+                if let Some(last) = self.history.back() {
+                    if last != &self.buf {
+                        if self.history.len() == HISTORY_LENGTH {
+                            self.history.pop_front();
+                        }
+                        self.history.push_back(self.buf.clone());
                     }
+                } else {
                     self.history.push_back(self.buf.clone());
                 }
                 return Ok(WidgetResult::Value(PathBuf::from(self.buf.iter().collect::<String>())))

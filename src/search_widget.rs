@@ -15,7 +15,7 @@
 
 use std::cmp::min;
 use std::fmt::{Write, Display};
-// use std::collections::vec_deque::VecDeque;
+use std::collections::vec_deque::VecDeque;
 
 use pancurses_result::{Window, Point, Input, ColorPair, Dimension};
 
@@ -445,8 +445,8 @@ pub struct SearchWidget {
     size:   usize,
     cursor: usize,
     view_offset: usize,
-    // history: VecDeque<Vec<char>>,
-    // future:  VecDeque<Vec<char>>,
+    history: VecDeque<(SearchMode, Vec<char>)>,
+    future:  VecDeque<(SearchMode, Vec<char>)>,
     mode: SearchMode,
 }
 
@@ -458,8 +458,8 @@ impl SearchWidget {
             size,
             cursor: 0,
             view_offset: 0,
-            // history: VecDeque::new(),
-            // future:  VecDeque::new(),
+            history: VecDeque::new(),
+            future:  VecDeque::new(),
             mode: SearchMode::String,
         }
     }
@@ -771,22 +771,22 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                 if self.buf.is_empty() {
                     return Ok(WidgetResult::Ignore);
                 }
-                //self.focused = false;
-                /* history only works for correct mode. multiple histories?
                 if self.future.len() > 0 {
                     let mut future = VecDeque::new();
                     std::mem::swap(&mut future, &mut self.future);
                     self.history.extend(future.into_iter());
                 }
-                if self.history.is_empty() {
-                    self.history.push_back(self.buf.clone());
-                } else if self.history[self.history.len() - 1] != self.buf {
-                    if self.history.len() == 1024 {
-                        self.history.pop_front();
+                if let Some((last_mode, last_buf)) = self.history.back() {
+                    if last_mode != &self.mode || last_buf != &self.buf {
+                        if self.history.len() == HISTORY_LENGTH {
+                            self.history.pop_front();
+                        }
+                        self.history.push_back((self.mode, self.buf.clone()));
                     }
-                    self.history.push_back(self.buf.clone());
+                } else {
+                    self.history.push_back((self.mode, self.buf.clone()));
                 }
-                */
+
                 if let Ok(bytes) = self.mode.parse(&self.buf) {
                     return Ok(WidgetResult::Value(bytes));
                 }
@@ -959,16 +959,15 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                 self.set_search_mode(self.mode.next_endian());
                 return Ok(WidgetResult::Redraw);
             }
-            Input::KeyUp | Input::KeyDown => {
-                return Ok(WidgetResult::Ignore);
-            }
-            /* history only works for correct mode
             Input::KeyUp => {
                 if self.history.is_empty() {
                     return Ok(WidgetResult::Ignore);
                 }
-                self.future.push_front(self.buf.clone());
-                self.buf = self.history.pop_back().unwrap();
+                // TODO: current search is also in history, skip it
+                self.future.push_front((self.mode, self.buf.clone()));
+                let (mode, buf) = self.history.pop_back().unwrap();
+                self.mode   = mode;
+                self.buf    = buf;
                 self.cursor = self.buf.len();
                 self.adjust_view();
 
@@ -978,14 +977,15 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                 if self.future.is_empty() {
                     return Ok(WidgetResult::Ignore);
                 }
-                self.history.push_back(self.buf.clone());
-                self.buf = self.future.pop_front().unwrap();
+                self.history.push_back((self.mode, self.buf.clone()));
+                let (mode, buf) = self.future.pop_front().unwrap();
+                self.mode   = mode;
+                self.buf    = buf;
                 self.cursor = self.buf.len();
                 self.adjust_view();
 
                 return Ok(WidgetResult::Redraw);
             }
-            */
             _input => {
                 return Ok(WidgetResult::PropagateEvent);
             }

@@ -36,3 +36,5 @@ pub const PAIR_AUTO_COMPLETE:       u8 = 10;
 pub const PAIR_ERROR_MESSAGE:       u8 = 11;
 pub const PAIR_SEARCH_MATCH:        u8 = 12;
 pub const PAIR_SEARCH_MATCH_CURSOR: u8 = 13;
+
+pub const HISTORY_LENGTH: usize = 1024;
