@@ -899,12 +899,21 @@ Press Enter, Escape or any normal key to clear errors.
 
     fn adjust_view(&mut self) {
         if self.bytes_per_row > 0 {
+            let size = self.mmap.size();
+            let max_view_offset = if self.view_size < size {
+                size - size % self.bytes_per_row - (self.view_size - self.bytes_per_row)
+            } else {
+                0
+            };
+
             if self.cursor >= self.view_offset + self.view_size {
-                self.view_offset = self.cursor - self.cursor % self.bytes_per_row + self.bytes_per_row - self.view_size;
+                self.view_offset = min(max_view_offset, self.cursor - self.cursor % self.bytes_per_row + self.bytes_per_row - self.view_size);
                 self.need_redraw = true;
             } else if self.cursor < self.view_offset {
-                self.view_offset = self.cursor - self.cursor % self.bytes_per_row;
+                self.view_offset = min(max_view_offset, self.cursor - self.cursor % self.bytes_per_row);
                 self.need_redraw = true;
+            } else if self.view_offset > max_view_offset {
+                self.view_offset = max_view_offset;
             }
         }
         self.view_mask_valid = false;
@@ -1016,16 +1025,24 @@ Press Enter, Escape or any normal key to clear errors.
             }
             Input::KeyNPage => {
                 let size = self.mmap.size();
-                if self.view_offset < size && self.view_size <= size {
-                    if self.view_offset + self.view_size < size {
-                        self.view_offset += self.view_size;
-                        if size > 0 {
-                            let cursor = min(self.cursor + self.view_size, size - 1);
-                            self.set_cursor(cursor);
-                        }
-                    } else if self.bytes_per_row > 0 {
-                        self.view_offset = (size + self.bytes_per_row - size % self.bytes_per_row) - self.view_size;
-                        self.view_offset += self.view_offset % self.bytes_per_row;
+                let max_view_offset = if self.view_size < size {
+                    size - size % self.bytes_per_row - (self.view_size - self.bytes_per_row)
+                } else {
+                    0
+                };
+                if self.view_offset < max_view_offset {
+                    let view_offset = self.view_offset + self.view_size;
+                    let cursor = self.cursor + self.view_size;
+                    if view_offset > max_view_offset {
+                        self.view_offset = max_view_offset;
+                    } else {
+                        self.view_offset = view_offset;
+                    }
+                    if cursor >= size {
+                        let cursor = cursor - self.bytes_per_row;
+                        self.set_cursor(cursor);
+                    } else {
+                        self.set_cursor(cursor);
                     }
                     self.need_redraw = true;
                 }
