@@ -51,6 +51,11 @@ Requirements
   ↓ → ö and box drawing characters). It's usable without, but these symbols will
   be garbage.
 
+Screenshot
+----------
+
+![screenshot](https://i.imgur.com/YkulstQ.png)
+
 Help
 ----
 
