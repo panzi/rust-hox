@@ -91,10 +91,11 @@ impl<'a> TextBox<'a> {
 
         if size.rows != self.win_size.rows {
             self.win_size.rows = size.rows;
-            let max_view_offset = self.max_view_offset();
-            if self.view_offset > max_view_offset {
-                self.view_offset = max_view_offset;
-            }
+        }
+
+        let max_view_offset = self.max_view_offset();
+        if self.view_offset > max_view_offset {
+            self.view_offset = max_view_offset;
         }
 
         Ok(())
@@ -103,7 +104,7 @@ impl<'a> TextBox<'a> {
     pub fn redraw(&self, window: &mut Window) -> Result<()> {
         if self.win_size.columns as usize > self.hdiff as usize && self.win_size.columns as usize > self.vdiff as usize {
             let width  = min(self.max_line_len + self.hdiff as usize, self.win_size.columns as usize);
-            let height = min(self.lines.len() - self.view_offset + self.vdiff as usize, self.win_size.rows as usize);
+            let height = min(self.lines.len() + self.vdiff as usize - self.view_offset, self.win_size.rows as usize);
             let x = (self.win_size.columns as usize - width) / 2;
             let y = (self.win_size.rows    as usize - height) / 2;
 
