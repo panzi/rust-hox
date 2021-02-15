@@ -89,9 +89,7 @@ impl<'a> TextBox<'a> {
             }
         }
 
-        if size.rows != self.win_size.rows {
-            self.win_size.rows = size.rows;
-        }
+        self.win_size.rows = size.rows;
 
         let max_view_offset = self.max_view_offset();
         if self.view_offset > max_view_offset {
