@@ -22,6 +22,7 @@ pub enum WidgetResult<V> {
     PropagateEvent,
     Redraw,
     Ignore,
+    Beep,
     Value(V),
 }
 

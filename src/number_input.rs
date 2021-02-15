@@ -263,10 +263,11 @@ where N: FromStr, N: Display {
             Input::Character('\n') => {
                 if let Ok(num) = self.buf.parse() {
                     self.focused = false;
-                    self.error = false;
+                    self.error   = false;
                     return Ok(WidgetResult::Value(num));
                 } else {
                     self.error = true;
+                    return Ok(WidgetResult::Beep);
                 }
             }
             Input::KeyUp | Input::KeyDown => {

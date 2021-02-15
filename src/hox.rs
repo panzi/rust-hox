@@ -328,9 +328,9 @@ impl<'a> Hox<'a> {
         colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_WHITE, COLOR_BLACK)?;
         colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_BLACK, COLOR_WHITE)?;
         colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_NON_ASCII           as i16, 239,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_NON_ASCII           as i16, 180,         COLOR_BLACK)?;
         colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_BLACK, COLOR_BLUE)?;
+        colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  20)?;
         colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE, 128)?;
         colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
         colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE, 236)?;
@@ -649,9 +649,18 @@ Press Enter, Escape or any normal key to clear errors.
                 if byte == '\n' as u8 {
                     window.put_str("⏎")?;
                 } else if byte == '\t' as u8 {
-                    window.put_str("␉")?;
-                } else if byte == 0xb {
-                    window.put_str("␋")?;
+                    window.put_str("»")?;
+                    // too small to discern:
+                    // window.put_str("⇥")?;
+                    // too small to read:
+                    // window.put_str("␉")?;
+                    // overflows into next character:
+                    // window.put_str("⭾")?;
+                // } else if byte == 0xb {
+                    // too small to read:
+                    // window.put_str("␋")?;
+                    // overflows into next character:
+                    // window.put_str("⭿")?;
                 } else if is_sidebar_ascii(byte) {
                     window.put_char(byte as char)?;
                 } else {
@@ -1021,6 +1030,7 @@ Press Enter, Escape or any normal key to clear errors.
                     if !is_printable_ascii(mem[self.cursor]) {
                         self.selecting = false;
                         self.error = Some("No ASCII character under cursor".to_owned());
+                        let _ = self.curses.beep();
                     }
 
                     let mut start_index = self.cursor;
@@ -1100,6 +1110,7 @@ Press Enter, Escape or any normal key to clear errors.
                     self.file_input.focus()?;
                 } else {
                     self.error = Some("Nothing selected".to_owned());
+                    let _ = self.curses.beep();
                 }
                 self.need_redraw = true;
             }
@@ -1194,12 +1205,17 @@ Press Enter, Escape or any normal key to clear errors.
 
                                     if let Err(error) = file.write_all(data) {
                                         self.error = Some(format!("{}: {:?}", error, path));
+                                        let _ = self.curses.beep();
                                     }
                                 }
                                 Err(error) => {
                                     self.error = Some(format!("{}: {:?}", error, path));
+                                    let _ = self.curses.beep();
                                 }
                             }
+                        }
+                        WidgetResult::Beep => {
+                            let _ = self.curses.beep();
                         }
                         WidgetResult::Ignore => {}
                     }
@@ -1219,6 +1235,9 @@ Press Enter, Escape or any normal key to clear errors.
                             self.need_redraw = true;
                             self.find_next();
                         }
+                        WidgetResult::Beep => {
+                            let _ = self.curses.beep();
+                        }
                         WidgetResult::Ignore => {}
                     }
                 } else if self.offset_input.has_focus() {
@@ -1233,6 +1252,9 @@ Press Enter, Escape or any normal key to clear errors.
                         }
                         WidgetResult::Value(value) => {
                             self.set_cursor(value);
+                        }
+                        WidgetResult::Beep => {
+                            let _ = self.curses.beep();
                         }
                         WidgetResult::Ignore => {}
                     }
@@ -1266,6 +1288,7 @@ Press Enter, Escape or any normal key to clear errors.
                 }
             }
             self.error = Some("Pattern not found searching forwards".to_owned());
+            let _ = self.curses.beep();
         }
 
         false
@@ -1294,6 +1317,7 @@ Press Enter, Escape or any normal key to clear errors.
                 }
             }
             self.error = Some("Pattern not found searching backwards".to_owned());
+            let _ = self.curses.beep();
         }
 
         false

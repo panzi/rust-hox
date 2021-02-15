@@ -769,7 +769,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
             }
             Input::Character('\n') | Input::KeyF3 => {
                 if self.buf.is_empty() {
-                    return Ok(WidgetResult::Ignore);
+                    return Ok(WidgetResult::Beep);
                 }
                 if self.future.len() > 0 {
                     let mut future = VecDeque::new();
@@ -791,7 +791,7 @@ impl InputWidget<&[u8], Vec<u8>> for SearchWidget {
                     self.focused = false;
                     return Ok(WidgetResult::Value(bytes));
                 }
-                return Ok(WidgetResult::Ignore);
+                return Ok(WidgetResult::Beep);
             }
             Input::Character(END_OF_MEDIUM) => {
                 self.set_search_mode(self.mode.prev_major());
