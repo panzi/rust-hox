@@ -829,7 +829,7 @@ Press Enter, Escape or any normal key to clear errors.
             else           { "  [ Uns&igned ]" }
         );
 
-        buf.push_str("  [ &Help]  [ &Quit ]");
+        buf.push_str("  [ &Help ]  [ &Quit ]");
 
         // ignore over long line errors here
         let _ = put_label(window, buf);
