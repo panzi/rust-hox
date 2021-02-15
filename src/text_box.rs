@@ -176,7 +176,7 @@ impl<'a> TextBox<'a> {
                     Ok(TextBoxResult::Ignore)
                 }
             }
-            Input::Character(CANCEL) => { // Ctrl+Home
+            Input::Character(CANCEL) | Input::Character('0') => { // Ctrl+Home
                 if self.view_offset != 0 {
                     self.view_offset = 0;
                     Ok(TextBoxResult::Redraw)
@@ -184,7 +184,7 @@ impl<'a> TextBox<'a> {
                     Ok(TextBoxResult::Ignore)
                 }
             }
-            Input::Character(DEVICE_CONTROL3) => { // Ctrl+End
+            Input::Character(DEVICE_CONTROL3) | Input::Character('$') => { // Ctrl+End
                 let max_view_offset = self.max_view_offset();
                 if self.view_offset != max_view_offset {
                     self.view_offset = max_view_offset;

@@ -304,13 +304,13 @@ impl<'a> Hox<'a> {
         let meta = file.metadata()?;
 
         let mut curses = initscr()?;
-    
+
         curses.set_echo_input(false)?;
         curses.set_cursor_visibility(CursorVisibility::Invisible)?;
         curses.start_color()?;
-    
+
         let window = curses.window_mut();
-    
+
         window.read_interpolate_function_keys(true)?;
         let size = meta.len();
         if size > std::usize::MAX as u64 {
@@ -327,18 +327,18 @@ impl<'a> Hox<'a> {
 
         colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_WHITE, COLOR_BLACK)?;
         colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_BLACK, COLOR_WHITE)?;
-        colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_NON_ASCII           as i16, 180,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_OFFSETS             as i16, COLOR_YELLOW, COLOR_BLACK))?;
+        colors.set_color_pair(PAIR_NON_ASCII           as i16, 180,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_NON_ASCII           as i16, COLOR_YELLOW, COLOR_BLACK))?;
         colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  20)?;
-        colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE, 128)?;
+        colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,          20).or_else(|_| colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  COLOR_BLUE))?;
+        colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,         128).or_else(|_| colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,  COLOR_MAGENTA))?;
         colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE, 236)?;
-        colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 235,         COLOR_BLACK)?;
+        colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,         236).or_else(|_| colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,  COLOR_CYAN))?;
+        colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 235,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, COLOR_WHITE,  COLOR_BLACK))?;
         colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK, 202)?;
-        colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK, 197)?;
-        
+        colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,         202).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,  COLOR_YELLOW))?;
+        colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,         197).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,  COLOR_RED))?;
+
         Ok(Self {
             mmap,
             curses,
@@ -397,13 +397,14 @@ F8 ... toggle little endian/big endian
 
 Navigation
 ──────────
-← ↑ ↓ → ..... move cursor
-Home ........ move cursor to start of line
-End ......... move cursor to end of line
-Ctr+Home .... move cursor to start of file
-Ctr+End ..... move cursor to end of file
-Page Up ..... move view up one page
-Page Down ... move view down one page
+← ↑ ↓ → ......... move cursor
+Home ............ move cursor to start of line
+End ............. move cursor to end of line
+0 or Ctr+Home ... move cursor to start of file
+$ or Ctr+End .... move cursor to end of file
+1 to 9 .......... move cursor to 10 * x percent of the file
+Page Up ......... move view up one page
+Page Down ....... move view down one page
 
 Press Enter, Escape or any normal key to clear errors.
 
@@ -925,13 +926,49 @@ Press Enter, Escape or any normal key to clear errors.
                 }
                 self.error = None;
             }
-            Input::Character(CANCEL) => { // Ctrl+Home
+            Input::Character(CANCEL) | Input::Character('0') => { // Ctrl+Home
                 if self.cursor != 0 {
                     self.set_cursor(0);
                 }
                 self.error = None;
             }
-            Input::Character(DEVICE_CONTROL3) => { // Ctrl+End
+            Input::Character('1') => {
+                self.goto_percent(10);
+                self.error = None;
+            }
+            Input::Character('2') => {
+                self.goto_percent(20);
+                self.error = None;
+            }
+            Input::Character('3') => {
+                self.goto_percent(30);
+                self.error = None;
+            }
+            Input::Character('4') => {
+                self.goto_percent(40);
+                self.error = None;
+            }
+            Input::Character('5') => {
+                self.goto_percent(50);
+                self.error = None;
+            }
+            Input::Character('6') => {
+                self.goto_percent(60);
+                self.error = None;
+            }
+            Input::Character('7') => {
+                self.goto_percent(70);
+                self.error = None;
+            }
+            Input::Character('8') => {
+                self.goto_percent(80);
+                self.error = None;
+            }
+            Input::Character('9') => {
+                self.goto_percent(90);
+                self.error = None;
+            }
+            Input::Character(DEVICE_CONTROL3) | Input::Character('$') => { // Ctrl+End
                 let size = self.mmap.size();
                 if size > 0 {
                     self.set_cursor(size - 1);
@@ -1333,6 +1370,21 @@ Press Enter, Escape or any normal key to clear errors.
                 for _ in 0..win_size.columns {
                     let _ = window.put_char(' ');
                 }
+            }
+        }
+    }
+
+    fn goto_percent(&mut self, percent: usize) {
+        let size = self.mmap.size();
+        if size > 1 {
+            let max_offset = size - 1;
+            if percent >= 100 {
+                self.set_cursor(max_offset);
+            } else if max_offset > std::usize::MAX / 100 {
+                // prevent integer overflow in multiplication
+                self.set_cursor((1 + ((max_offset - 1) / 100)) * percent);
+            } else {
+                self.set_cursor(1 + ((max_offset * percent - 1) / 100));
             }
         }
     }
