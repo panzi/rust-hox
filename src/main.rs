@@ -26,7 +26,7 @@ mod search_widget;
 mod consts;
 
 use result::Result;
-use hox::{Hox, Endian};
+use hox::{Hox, Endian, Theme};
 
 fn main() {
     let args = App::new("Hox - Hex viewer written in Rust")
@@ -42,8 +42,20 @@ fn main() {
 
         .arg(Arg::with_name("signed")
             .long("signed")
+            .short("s")
             .takes_value(false)
             .help("Display numbers as signed."))
+
+        .arg(Arg::with_name("dark-mode")
+            .long("dark-mode")
+            .takes_value(false)
+            .conflicts_with("light-mode")
+            .help("Plesant dark mode. [default]"))
+
+        .arg(Arg::with_name("light-mode")
+            .long("light-mode")
+            .takes_value(false)
+            .help("Burn your eyes in light mode."))
 
         .arg(Arg::with_name("file")
             .index(1)
@@ -64,8 +76,13 @@ fn main() {
     };
 
     let signed = args.is_present("signed");
+    let theme = if args.is_present("light-mode") {
+        Theme::Light
+    } else {
+        Theme::Dark
+    };
 
-    if let Err(mut error) = run(filename, endian, signed) {
+    if let Err(mut error) = run(filename, endian, signed, theme) {
         if error.path().is_none() {
             error = error.with_path(filename);
         }
@@ -74,10 +91,10 @@ fn main() {
     }
 }
 
-fn run(filename: &str, endian: Endian, signed: bool) -> Result<()> {
+fn run(filename: &str, endian: Endian, signed: bool, theme: Theme) -> Result<()> {
     let mut file = std::fs::File::open(filename)?;
 
-    let mut hox = Hox::new(&mut file)?;
+    let mut hox = Hox::new(&mut file, theme)?;
     hox.set_endian(endian);
     hox.set_signed(signed);
 

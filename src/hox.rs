@@ -40,6 +40,12 @@ pub enum Endian {
     Little,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
 const MASK_SEARCH:          u8 =  1;
 const MASK_SEARCH_END:      u8 =  2;
 const MASK_HIGHLIGHT:       u8 =  4;
@@ -300,7 +306,7 @@ pub struct Hox<'a> {
 }
 
 impl<'a> Hox<'a> {
-    pub fn new(file: &'a mut File) -> Result<Self> {
+    pub fn new(file: &'a mut File, theme: Theme) -> Result<Self> {
         let meta = file.metadata()?;
 
         let mut curses = initscr()?;
@@ -325,19 +331,36 @@ impl<'a> Hox<'a> {
 
         let colors = curses.color_mut();
 
-        colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_WHITE, COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_BLACK, COLOR_WHITE)?;
-        colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_OFFSETS             as i16, COLOR_YELLOW, COLOR_BLACK))?;
-        colors.set_color_pair(PAIR_NON_ASCII           as i16, 180,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_NON_ASCII           as i16, COLOR_YELLOW, COLOR_BLACK))?;
-        colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,          20).or_else(|_| colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  COLOR_BLUE))?;
-        colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,         128).or_else(|_| colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,  COLOR_MAGENTA))?;
-        colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
-        colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,         236).or_else(|_| colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,  COLOR_CYAN))?;
-        colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 235,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, COLOR_WHITE,  COLOR_BLACK))?;
-        colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   COLOR_BLACK)?;
-        colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,         202).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,  COLOR_YELLOW))?;
-        colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,         197).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,  COLOR_RED))?;
+        if theme == Theme::Light {
+            colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_BLACK, COLOR_WHITE)?;
+            colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_WHITE, COLOR_BLACK)?;
+            colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_WHITE).or_else(|_| colors.set_color_pair(PAIR_OFFSETS             as i16, COLOR_YELLOW, COLOR_WHITE))?;
+            colors.set_color_pair(PAIR_NON_ASCII           as i16, 174,         COLOR_WHITE).or_else(|_| colors.set_color_pair(PAIR_NON_ASCII           as i16, COLOR_YELLOW, COLOR_WHITE))?;
+            colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
+            colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,          20).or_else(|_| colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  COLOR_BLUE))?;
+            colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,         128).or_else(|_| colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,  COLOR_MAGENTA))?;
+            colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
+            colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,         236).or_else(|_| colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,  COLOR_CYAN))?;
+            colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 248,         COLOR_WHITE).or_else(|_| colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, COLOR_BLACK,  COLOR_WHITE))?;
+            colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   COLOR_WHITE)?;
+            colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,         202).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,  COLOR_YELLOW))?;
+            colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,         197).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,  COLOR_RED))?;
+        } else {
+            colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_WHITE, COLOR_BLACK)?;
+            colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_BLACK, COLOR_WHITE)?;
+            colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_OFFSETS             as i16, COLOR_YELLOW, COLOR_BLACK))?;
+            colors.set_color_pair(PAIR_NON_ASCII           as i16, 180,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_NON_ASCII           as i16, COLOR_YELLOW, COLOR_BLACK))?;
+            colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
+            colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,          20).or_else(|_| colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  COLOR_BLUE))?;
+            colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,         128).or_else(|_| colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,  COLOR_MAGENTA))?;
+            colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
+            colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,         236).or_else(|_| colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,  COLOR_CYAN))?;
+            colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 235,         COLOR_BLACK).or_else(|_| colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, COLOR_WHITE,  COLOR_BLACK))?;
+            colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   COLOR_BLACK)?;
+            colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,         202).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,  COLOR_YELLOW))?;
+            colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,         197).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,  COLOR_RED))?;
+        }
+        curses.window_mut().set_background(ColorPair(PAIR_NORMAL));
 
         Ok(Self {
             mmap,
@@ -529,18 +552,17 @@ Press Enter, Escape or any normal key to clear errors.
 
         let buf = &mut self.buf;
         let mut line = 0;
-        for row_offset in (self.view_offset..view_end_offset).step_by(self.bytes_per_row) {
+        for row_offset in (self.view_offset..view_end_offset).step_by(bytes_per_row) {
             buf.clear();
             write!(buf, "{:01$X}:", row_offset, self.offset_hex_len)?;
-            
+
             window.move_to((line, 0))?;
             window.turn_on_attributes(ColorPair(PAIR_OFFSETS))?;
             window.put_str(&buf)?;
-            window.turn_off_attributes(ColorPair(PAIR_OFFSETS))?;
 
             window.put_str("  ")?;
 
-            let overflow_offset = row_offset + self.bytes_per_row;
+            let overflow_offset = row_offset + bytes_per_row;
             let end_byte_offset = min(overflow_offset, size);
 
             let mut byte_offset = row_offset;
@@ -671,7 +693,9 @@ Press Enter, Escape or any normal key to clear errors.
 
             window.turn_on_attributes(ColorPair(PAIR_NORMAL))?;
 
-            for _ in end_byte_offset..overflow_offset {
+            let remaining = self.win_size.columns as usize - (self.offset_hex_len + 2 + 3 * bytes_per_row + 1 + (end_byte_offset - row_offset));
+
+            for _ in 0..remaining {
                 window.put_char(' ')?;
             }
 
