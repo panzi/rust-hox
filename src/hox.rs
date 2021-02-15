@@ -332,17 +332,27 @@ impl<'a> Hox<'a> {
         let colors = curses.color_mut();
 
         if theme == Theme::Light {
-            colors.set_color_pair(PAIR_NORMAL              as i16, COLOR_BLACK, COLOR_WHITE)?;
-            colors.set_color_pair(PAIR_INVERTED            as i16, COLOR_WHITE, COLOR_BLACK)?;
-            colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         COLOR_WHITE).or_else(|_| colors.set_color_pair(PAIR_OFFSETS             as i16, COLOR_YELLOW, COLOR_WHITE))?;
-            colors.set_color_pair(PAIR_NON_ASCII           as i16, 174,         COLOR_WHITE).or_else(|_| colors.set_color_pair(PAIR_NON_ASCII           as i16, COLOR_YELLOW, COLOR_WHITE))?;
-            colors.set_color_pair(PAIR_CURSOR              as i16, COLOR_WHITE, COLOR_RED)?;
-            colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,          20).or_else(|_| colors.set_color_pair(PAIR_SELECTION           as i16, COLOR_WHITE,  COLOR_BLUE))?;
-            colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,         128).or_else(|_| colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, COLOR_WHITE,  COLOR_MAGENTA))?;
-            colors.set_color_pair(PAIR_INPUT_ERROR         as i16, COLOR_WHITE, COLOR_RED)?;
-            colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,         236).or_else(|_| colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, COLOR_WHITE,  COLOR_CYAN))?;
-            colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 248,         COLOR_WHITE).or_else(|_| colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, COLOR_BLACK,  COLOR_WHITE))?;
-            colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   COLOR_WHITE)?;
+            // workaround: TERM=linux is ok with using 15, but it renders as black
+            let white = if let Ok(term) = std::env::var("TERM") {
+                if term == "xterm-256color" { 15 } else { COLOR_WHITE }
+            } else {
+                COLOR_WHITE
+            };
+            let white = if let Ok(()) = colors.set_color_pair(PAIR_NORMAL as i16, COLOR_BLACK, white) {
+                white
+            } else {
+                COLOR_WHITE
+            };
+            colors.set_color_pair(PAIR_INVERTED            as i16, white, COLOR_BLACK)?;
+            colors.set_color_pair(PAIR_OFFSETS             as i16, 130,         white).or_else(|_| colors.set_color_pair(PAIR_OFFSETS             as i16, COLOR_YELLOW, white))?;
+            colors.set_color_pair(PAIR_NON_ASCII           as i16, 174,         white).or_else(|_| colors.set_color_pair(PAIR_NON_ASCII           as i16, COLOR_YELLOW, white))?;
+            colors.set_color_pair(PAIR_CURSOR              as i16, white, COLOR_RED)?;
+            colors.set_color_pair(PAIR_SELECTION           as i16, white,          20).or_else(|_| colors.set_color_pair(PAIR_SELECTION           as i16, white,  COLOR_BLUE))?;
+            colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, white,         128).or_else(|_| colors.set_color_pair(PAIR_SELECTED_CURSOR     as i16, white,  COLOR_MAGENTA))?;
+            colors.set_color_pair(PAIR_INPUT_ERROR         as i16, white, COLOR_RED)?;
+            colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, white,         236).or_else(|_| colors.set_color_pair(PAIR_SELECTION_MATCH     as i16, white,  COLOR_CYAN))?;
+            colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, 248,         white).or_else(|_| colors.set_color_pair(PAIR_AUTO_COMPLETE       as i16, COLOR_BLACK,  white))?;
+            colors.set_color_pair(PAIR_ERROR_MESSAGE       as i16, COLOR_RED,   white)?;
             colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,         202).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH        as i16, COLOR_BLACK,  COLOR_YELLOW))?;
             colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,         197).or_else(|_| colors.set_color_pair(PAIR_SEARCH_MATCH_CURSOR as i16, COLOR_BLACK,  COLOR_RED))?;
         } else {
