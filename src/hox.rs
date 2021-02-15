@@ -382,11 +382,11 @@ Search
 Enter or F3 ... find (next)
 F5 ............ switch through modes: Text/Binary/Integer
 Shift+F5 ...... switch through modes in reverse
-Escape ........ stop search
+Escape ........ close search bar
 
 Non-Text Search
 ───────────────
-Escape or q ... stop search
+Escape or q ... close search bar
 (and all other global hotkeys that aren't allowed input characters)
 
 Integer Search
@@ -397,14 +397,14 @@ F8 ... toggle little endian/big endian
 
 Navigation
 ──────────
-← ↑ ↓ → ......... move cursor
-Home ............ move cursor to start of line
-End ............. move cursor to end of line
-0 or Ctr+Home ... move cursor to start of file
-$ or Ctr+End .... move cursor to end of file
-1 to 9 .......... move cursor to 10 * x percent of the file
-Page Up ......... move view up one page
-Page Down ....... move view down one page
+← ↑ ↓ → .......... move cursor
+Home ............. move cursor to start of line
+End .............. move cursor to end of line
+0 or Ctrl+Home ... move cursor to start of file
+$ or Ctrl+End .... move cursor to end of file
+1 to 9 ........... move cursor to 10 * x percent of the file
+Page Up .......... move view up one page
+Page Down ........ move view down one page
 
 Press Enter, Escape or any normal key to clear errors.
 

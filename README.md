@@ -27,11 +27,29 @@ don't know where in the file you are.
 Features
 --------
 
-* resizes to window
-* decode bytes at curser as 8, 16, 32, and 64 bit integers, 32 and 64 bit
-  floating point numbers, you can choose signed/unsinged, little/big endian
-* jump to user supplied offset
-* support large files via mmap()
+* Resizes to window
+* Supports large files via `mmap()`.
+* Decodes bytes at curser as 8, 16, 32, and 64 bit integers, 32 and 64 bit
+  floating point numbers. You can choose signed/unsinged, and little/big endian
+  encoding.
+* Jump to user supplied offset.
+* Write selection to file.
+* Search for:
+  * Selection
+  * UTF-8 text
+  * Binary string (entered as hexadecimal)
+  * Integers
+    * 8/16/32/64 bit
+    * signed/unsigned
+    * little endian/big endian
+
+Requirements
+------------
+
+* A Unix system that supports `mmap()`.
+* A Unicode capable terminal for optimal display (e.g. for symbols like ⏎ » ← ↑
+  ↓ → ö and box drawing characters). It's usable without, but these symbols will
+  be garbage.
 
 Help
 ----
@@ -49,8 +67,8 @@ S ......... clear selection
 w ......... write selection to file
 f or F3 ... open search bar (and search for current selection)
 F ......... clear search
-n ......... find next
-p ......... find previous
+n or P .... find next
+p or N .... find previous
 # ......... select ASCII line under cursor
 
 Search
@@ -58,25 +76,29 @@ Search
 Enter or F3 ... find (next)
 F5 ............ switch through modes: Text/Binary/Integer
 Shift+F5 ...... switch through modes in reverse
-F6 ............ switch through integer sizes: 8/16/32/64
-F7 ............ toggle signed/unsigned
-F8 ............ toggle little endian/big endian
-Escape ........ stop search
+Escape ........ close search bar
 
 Non-Text Search
 ───────────────
-Escape or q ... stop search
-(and all other global hotkeys)
+Escape or q ... close search bar
+(and all other global hotkeys that aren't allowed input characters)
+
+Integer Search
+──────────────
+F6 ... switch through integer sizes: 8/16/32/64
+F7 ... toggle signed/unsigned
+F8 ... toggle little endian/big endian
 
 Navigation
 ──────────
-← ↑ ↓ → ..... move cursor
-Home ........ move cursor to start of line
-End ......... move cursor to end of line
-Ctr+Home .... move cursor to start of file
-Ctr+End ..... move cursor to end of file
-Page Up ..... move view up one page
-Page Down ... move view down one page
+← ↑ ↓ → .......... move cursor
+Home ............. move cursor to start of line
+End .............. move cursor to end of line
+0 or Ctrl+Home ... move cursor to start of file
+$ or Ctrl+End .... move cursor to end of file
+1 to 9 ........... move cursor to 10 * x percent of the file
+Page Up .......... move view up one page
+Page Down ........ move view down one page
 
 Press Enter, Escape or any normal key to clear errors.
 ```
