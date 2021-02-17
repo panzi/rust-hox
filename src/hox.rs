@@ -720,9 +720,15 @@ Press Enter, Escape or any normal key to clear errors.
         window.move_to((rows - 6, 0))?;
 
         buf.clear();
-        write!(buf,
-            " &Offset: [ {:>14} ]  &Selection: {} - {}",
-            self.cursor, self.selection_start, self.selection_end)?;
+        write!(buf, " &Offset: [ {:>14} ]  &Selection: ",
+            self.cursor)?;
+        if self.selection_end > self.selection_start {
+            write!(buf, "{} ... {} ({})",
+                self.selection_start, self.selection_end,
+                self.selection_end - self.selection_start)?;
+        } else {
+            buf.push_str("None");
+        }
         if self.selecting {
             buf.push_str(" selecting");
         }
@@ -1160,7 +1166,6 @@ Press Enter, Escape or any normal key to clear errors.
                 self.offset_input.set_value(self.cursor)?;
                 self.offset_input.focus()?;
                 self.need_redraw = true;
-                self.selecting = false;
                 self.error = None;
             }
             Input::Character('+') => {
@@ -1171,7 +1176,6 @@ Press Enter, Escape or any normal key to clear errors.
                 self.rel_offset_input.set_plus()?;
                 self.rel_offset_input.focus()?;
                 self.need_redraw = true;
-                self.selecting = false;
                 self.error = None;
             }
             Input::Character('-') => {
@@ -1182,7 +1186,6 @@ Press Enter, Escape or any normal key to clear errors.
                 self.rel_offset_input.set_minus()?;
                 self.rel_offset_input.focus()?;
                 self.need_redraw = true;
-                self.selecting = false;
                 self.error = None;
             }
             Input::Character('f') | Input::Character('/') | Input::KeyF3 => {
