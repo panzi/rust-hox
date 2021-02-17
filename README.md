@@ -67,6 +67,7 @@ q ......... quit
 e ......... toggle between big and little endian
 i ......... toggle between signed and unsinged
 o ......... enter offset to jump to
++ or - .... enter relative offset to jump to
 s ......... toggle select mode
 S ......... clear selection
 w ......... write selection to file

@@ -53,6 +53,7 @@ const MASK_HIGHLIGHT_END:   u8 =  8;
 const MASK_SELECTED:        u8 = 16;
 const MASK_SELECTED_END:    u8 = 32;
 
+const REL_OFFSET_LABEL: &str = "Relative Offset: ";
 const FILE_INPUT_LABEL: &str = "Filename: ";
 const SEARCH_LABEL: &str = "Search: ";
 
@@ -297,6 +298,7 @@ pub struct Hox<'a> {
     view_mask: Vec<u8>,
     view_mask_valid: bool,
     offset_input: NumberInput<usize>,
+    rel_offset_input: NumberInput<isize>,
     file_input: FileInput,
     help_box: TextBox<'a>,
     help_shown: bool,
@@ -391,7 +393,8 @@ impl<'a> Hox<'a> {
             selecting: false,
             view_mask: Vec::new(),
             view_mask_valid: false,
-            offset_input: NumberInput::<usize>::new(16),
+            offset_input: NumberInput::new(16),
+            rel_offset_input: NumberInput::new(16),
             file_input: FileInput::new(0),
             help_box: TextBox::new("\
 Hotkeys
@@ -401,6 +404,7 @@ q ......... quit
 e ......... toggle between big and little endian
 i ......... toggle between signed and unsinged
 o ......... enter offset to jump to
++ or - .... enter relative offset to jump to
 s ......... toggle select mode
 S ......... clear selection
 w ......... write selection to file
@@ -845,6 +849,10 @@ Press Enter, Escape or any normal key to clear errors.
             for _ in count..self.win_size.columns as usize {
                 window.put_char(' ')?;
             }
+        } else if self.rel_offset_input.has_focus() {
+            window.put_str(REL_OFFSET_LABEL)?;
+            // TODO: correct truncating of NumberInput
+            let _ = self.rel_offset_input.redraw(window, (self.win_size.rows - 7, REL_OFFSET_LABEL.len() as i32));
         } else if self.file_input.has_focus() {
             window.put_str(FILE_INPUT_LABEL)?;
             self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
@@ -1148,8 +1156,31 @@ Press Enter, Escape or any normal key to clear errors.
                 // goto offset
                 self.file_input.blur()?;
                 self.search_widget.blur()?;
+                self.rel_offset_input.blur()?;
                 self.offset_input.set_value(self.cursor)?;
                 self.offset_input.focus()?;
+                self.need_redraw = true;
+                self.selecting = false;
+                self.error = None;
+            }
+            Input::Character('+') => {
+                // goto relative offset
+                self.file_input.blur()?;
+                self.offset_input.blur()?;
+                self.search_widget.blur()?;
+                self.rel_offset_input.set_plus()?;
+                self.rel_offset_input.focus()?;
+                self.need_redraw = true;
+                self.selecting = false;
+                self.error = None;
+            }
+            Input::Character('-') => {
+                // goto relative offset
+                self.file_input.blur()?;
+                self.offset_input.blur()?;
+                self.search_widget.blur()?;
+                self.rel_offset_input.set_minus()?;
+                self.rel_offset_input.focus()?;
                 self.need_redraw = true;
                 self.selecting = false;
                 self.error = None;
@@ -1160,6 +1191,7 @@ Press Enter, Escape or any normal key to clear errors.
                 self.selecting = false;
                 self.file_input.blur()?;
                 self.offset_input.blur()?;
+                self.rel_offset_input.blur()?;
                 if self.selection_end > self.selection_start {
                     let search_data = &self.mmap.mem()[self.selection_start..self.selection_end];
                     if search_data.iter().all(|byte| is_printable_ascii(*byte)) {
@@ -1194,6 +1226,7 @@ Press Enter, Escape or any normal key to clear errors.
                     self.selecting = false;
                     self.search_widget.blur()?;
                     self.offset_input.blur()?;
+                    self.rel_offset_input.blur()?;
                     self.file_input.set_value("")?;
                     self.file_input.focus()?;
                 } else {
@@ -1340,6 +1373,36 @@ Press Enter, Escape or any normal key to clear errors.
                         }
                         WidgetResult::Value(value) => {
                             self.set_cursor(value);
+                        }
+                        WidgetResult::Beep => {
+                            let _ = self.curses.beep();
+                        }
+                        WidgetResult::Ignore => {}
+                    }
+                } else if self.rel_offset_input.has_focus() {
+                    match self.rel_offset_input.handle(input)? {
+                        WidgetResult::PropagateEvent => {
+                            if !self.handle(input)? {
+                                break;
+                            }
+                        }
+                        WidgetResult::Redraw => {
+                            self.need_redraw = true;
+                        }
+                        WidgetResult::Value(value) => {
+                            let mut cursor = self.cursor;
+                            if value < 0 {
+                                if -value as usize > cursor {
+                                    cursor = 0;
+                                } else {
+                                    cursor -= -value as usize;
+                                }
+                            } else if value as usize > std::usize::MAX - cursor {
+                                cursor = cursor;
+                            } else {
+                                cursor += value as usize;
+                            }
+                            self.set_cursor(cursor);
                         }
                         WidgetResult::Beep => {
                             let _ = self.curses.beep();

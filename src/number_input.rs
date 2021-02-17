@@ -96,6 +96,33 @@ where N: FromStr, N: Display {
         Ok(())
     }
 
+    pub fn set_plus(&mut self) -> Result<()> {
+        self.error = false;
+        self.buf.clear();
+        self.buf.push('+');
+        self.cursor = self.buf.len();
+        if self.cursor > self.size {
+            self.view_offset = self.cursor - self.size;
+        } else {
+            self.view_offset = 0;
+        }
+
+        Ok(())
+    }
+
+    pub fn set_minus(&mut self) -> Result<()> {
+        self.error = false;
+        self.buf.clear();
+        self.buf.push('-');
+        self.cursor = self.buf.len();
+        if self.cursor > self.size {
+            self.view_offset = self.cursor - self.size;
+        } else {
+            self.view_offset = 0;
+        }
+
+        Ok(())
+    }
 }
 
 impl<N> InputWidget<N> for NumberInput<N>
@@ -191,20 +218,25 @@ where N: FromStr, N: Display {
         }
 
         match input {
-            Input::Character(ch) if ((ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E') && self.buf.len() < 20 => {
-                self.buf.insert(self.cursor, ch);
-                self.error = self.buf.parse::<N>().is_err();
-                self.cursor += 1;
-                if self.cursor > self.size {
-                    self.view_offset = self.cursor - self.size;
+            Input::Character(ch) if ((ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.' || ch == 'e' || ch == 'E') => {
+                if self.buf.len() < 20 {
+                    self.buf.insert(self.cursor, ch);
+                    self.error = self.buf.parse::<N>().is_err();
+                    self.cursor += 1;
+                    if self.cursor > self.size {
+                        self.view_offset = self.cursor - self.size;
+                    }
+                    return Ok(WidgetResult::Redraw);
+                } else {
+                    return Ok(WidgetResult::Ignore);
                 }
-                return Ok(WidgetResult::Redraw);
             }
             Input::Character('x') => {
                 self.buf.clear();
                 self.cursor = 0;
                 self.view_offset = 0;
                 self.error = false;
+                return Ok(WidgetResult::Redraw);
             }
             Input::KeyHome => {
                 self.cursor = 0;
@@ -225,6 +257,8 @@ where N: FromStr, N: Display {
                         self.view_offset = self.cursor;
                     }
                     return Ok(WidgetResult::Redraw);
+                } else {
+                    return Ok(WidgetResult::Ignore);
                 }
             }
             Input::KeyRight => {
@@ -234,6 +268,8 @@ where N: FromStr, N: Display {
                         self.view_offset = self.cursor - self.size;
                     }
                     return Ok(WidgetResult::Redraw);
+                } else {
+                    return Ok(WidgetResult::Ignore);
                 }
             }
             Input::KeyDC => {
@@ -242,6 +278,8 @@ where N: FromStr, N: Display {
                     self.error = if self.buf.is_empty() { false }
                                  else { self.buf.parse::<usize>().is_err() };
                     return Ok(WidgetResult::Redraw);
+                } else {
+                    return Ok(WidgetResult::Ignore);
                 }
             }
             Input::KeyBackspace => {
@@ -254,6 +292,8 @@ where N: FromStr, N: Display {
                     self.error = if self.buf.is_empty() { false }
                                  else { self.buf.parse::<usize>().is_err() };
                     return Ok(WidgetResult::Redraw);
+                } else {
+                    return Ok(WidgetResult::Ignore);
                 }
             }
             Input::Character('q') | Input::Character(ESCAPE) | Input::Character(END_OF_TRANSMISSION) => {
@@ -277,7 +317,5 @@ where N: FromStr, N: Display {
                 return Ok(WidgetResult::PropagateEvent);
             },
         }
-
-        Ok(WidgetResult::Redraw)
     }
 }
