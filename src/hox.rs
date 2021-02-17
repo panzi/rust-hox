@@ -1376,6 +1376,7 @@ Press Enter, Escape or any normal key to clear errors.
                         }
                         WidgetResult::Value(value) => {
                             self.set_cursor(value);
+                            self.need_redraw = true;
                         }
                         WidgetResult::Beep => {
                             let _ = self.curses.beep();
@@ -1406,6 +1407,7 @@ Press Enter, Escape or any normal key to clear errors.
                                 cursor += value as usize;
                             }
                             self.set_cursor(cursor);
+                            self.need_redraw = true;
                         }
                         WidgetResult::Beep => {
                             let _ = self.curses.beep();
