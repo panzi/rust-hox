@@ -27,12 +27,15 @@ don't know where in the file you are.
 Features
 --------
 
-* Resizes to window
+* Resizes to window.
 * Supports large files via `mmap()`.
 * Decodes bytes at curser as 8, 16, 32, and 64 bit integers, 32 and 64 bit
   floating point numbers. You can choose signed/unsinged, and little/big endian
   encoding.
-* Jump to user supplied offset.
+* Jump to user supplied aboslute or relative offset. For relative just type e.g.
+  `+12` enter, or `-8` enter etc.
+* Select data. Other bytes matching the selected ones are automatically
+  highlighted in gray.
 * Write selection to file.
 * Search for:
   * Selection
@@ -42,6 +45,8 @@ Features
     * 8/16/32/64 bit
     * signed/unsigned
     * little endian/big endian
+* Search history (not persisted).
+* Auto-complete filenames and filename history (not persisted).
 
 Requirements
 ------------
@@ -80,14 +85,14 @@ p or N .... find previous
 Search
 ──────
 Enter or F3 ... find (next)
-F5 ............ switch through modes: Text/Binary/Integer
-Shift+F5 ...... switch through modes in reverse
+F5 ............ switch through input modes: Text/Binary/Integer
+Shift+F5 ...... switch through input modes in reverse
 Escape ........ close search bar
 
 Non-Text Search
 ───────────────
 Escape or q ... close search bar
-(and all other global hotkeys that aren't allowed input characters)
+(all other global hotkeys that aren't allowed input characters are active)
 
 Integer Search
 ──────────────
@@ -107,6 +112,9 @@ Page Up .......... move view up one page
 Page Down ........ move view down one page
 
 Press Enter, Escape or any normal key to clear errors.
+
+Ctrl+Home/Ctrl+End might not work in every terminal. If it doesn't for you use
+0 or $.
 ```
 
 GPLv3 License

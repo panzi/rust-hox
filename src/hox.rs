@@ -417,14 +417,14 @@ p or N .... find previous
 Search
 ──────
 Enter or F3 ... find (next)
-F5 ............ switch through modes: Text/Binary/Integer
-Shift+F5 ...... switch through modes in reverse
+F5 ............ switch through input modes: Text/Binary/Integer
+Shift+F5 ...... switch through input modes in reverse
 Escape ........ close search bar
 
 Non-Text Search
 ───────────────
 Escape or q ... close search bar
-(and all other global hotkeys that aren't allowed input characters)
+(all other global hotkeys that aren't allowed input characters are active)
 
 Integer Search
 ──────────────
@@ -445,6 +445,7 @@ Page Down ........ move view down one page
 
 Press Enter, Escape or any normal key to clear errors.
 
+Ctrl+Home/Ctrl+End might not work in every terminal. If it doesn't for you use 0 or $.
 
 © 2021 Mathias Panzenböck", 2, 1,
             ),
