@@ -447,6 +447,7 @@ Press Enter, Escape or any normal key to clear errors.
 
 Ctrl+Home/Ctrl+End might not work in every terminal. If it doesn't for you use 0 or $.
 
+https://completeme.site/panzi/rust-hox
 © 2021 Mathias Panzenböck", 2, 1,
             ),
             help_shown: false,
