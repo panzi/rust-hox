@@ -70,7 +70,7 @@ impl Drop for MMap<'_> {
             libc::munmap(self.ptr, self.size as libc::size_t) 
         };
         if result != 0 {
-            panic!(std::io::Error::last_os_error());
+            panic!("{}", std::io::Error::last_os_error());
         }
     }
 }
