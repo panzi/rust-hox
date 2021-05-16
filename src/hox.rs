@@ -1445,7 +1445,7 @@ https://completeme.site/panzi/rust-hox
                     }
                 }
             }
-            self.error = Some("Pattern not found searching forwards".to_owned());
+            self.error = Some("Pattern not found searching forward".to_owned());
             let _ = self.curses.beep();
         }
 
@@ -1474,7 +1474,7 @@ https://completeme.site/panzi/rust-hox
                     offset -= 1;
                 }
             }
-            self.error = Some("Pattern not found searching backwards".to_owned());
+            self.error = Some("Pattern not found searching backward".to_owned());
             let _ = self.curses.beep();
         }
 

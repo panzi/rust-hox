@@ -55,6 +55,19 @@ impl<'a> MMap<'a> {
             std::ptr::slice_from_raw_parts::<u8>(self.ptr.cast(), self.size).as_ref().unwrap()
         }
     }
+
+    #[allow(dead_code)]
+    pub fn close(self) -> std::io::Result<()> {
+        let result = unsafe {
+            libc::munmap(self.ptr, self.size as libc::size_t)
+        };
+
+        if result != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> AsRef<[u8]> for MMap<'a> {
@@ -70,7 +83,7 @@ impl Drop for MMap<'_> {
             libc::munmap(self.ptr, self.size as libc::size_t) 
         };
         if result != 0 {
-            panic!("{}", std::io::Error::last_os_error());
+            panic!("munmap(): {}", std::io::Error::last_os_error());
         }
     }
 }
