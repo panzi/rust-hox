@@ -57,6 +57,8 @@ const REL_OFFSET_LABEL: &str = "Relative Offset: ";
 const FILE_INPUT_LABEL: &str = "Filename: ";
 const SEARCH_LABEL: &str = "Search: ";
 
+const BOTTOM_WIN_HEIGHT: u8 = 7;
+
 #[inline]
 pub fn is_sidebar_ascii(byte: u8) -> bool {
     byte >= 0x20 && byte <= 0x7e
@@ -860,13 +862,13 @@ https://github.com/panzi/rust-hox
         } else if self.rel_offset_input.has_focus() {
             window.put_str(REL_OFFSET_LABEL)?;
             // TODO: correct truncating of NumberInput
-            let _ = self.rel_offset_input.redraw(window, (self.win_size.rows - 7, REL_OFFSET_LABEL.len() as i32));
+            let _ = self.rel_offset_input.redraw(window, (self.win_size.rows - BOTTOM_WIN_HEIGHT as i32, REL_OFFSET_LABEL.len() as i32));
         } else if self.file_input.has_focus() {
             window.put_str(FILE_INPUT_LABEL)?;
-            self.file_input.redraw(window, (self.win_size.rows - 7, FILE_INPUT_LABEL.len() as i32))?;
+            self.file_input.redraw(window, (self.win_size.rows - BOTTOM_WIN_HEIGHT as i32, FILE_INPUT_LABEL.len() as i32))?;
         } else if self.search_widget.has_focus() {
             window.put_str(SEARCH_LABEL)?;
-            self.search_widget.redraw(window, (self.win_size.rows - 7, SEARCH_LABEL.len() as i32))?;
+            self.search_widget.redraw(window, (self.win_size.rows - BOTTOM_WIN_HEIGHT as i32, SEARCH_LABEL.len() as i32))?;
         } else {
             for _ in 0..self.win_size.columns {
                 window.put_char(' ')?;
@@ -906,14 +908,14 @@ https://github.com/panzi/rust-hox
             self.win_size = win_size;
             self.need_redraw = true;
 
-            if self.win_size.rows < 7 || self.const_space + 3 > self.win_size.columns as usize {
+            if self.win_size.rows < BOTTOM_WIN_HEIGHT as i32 || self.const_space + 3 > self.win_size.columns as usize {
                 self.bytes_per_row = 0;
                 self.view_size = 0;
             } else {
                 let rest = self.win_size.columns as usize - self.const_space;
                 self.bytes_per_row = (rest + 1) / 4;
 
-                let view_rows = (self.win_size.rows - 7) as usize;
+                let view_rows = (self.win_size.rows - BOTTOM_WIN_HEIGHT as i32) as usize;
                 self.view_size = self.bytes_per_row * view_rows;
             }
 
@@ -1485,8 +1487,25 @@ https://github.com/panzi/rust-hox
         let window = self.curses.window_mut();
         let win_size = window.size();
 
-        if win_size.rows > 7 {
-            for y in (win_size.rows - 7)..win_size.rows {
+        if win_size.rows > BOTTOM_WIN_HEIGHT as i32 {
+            let size = self.mmap.size();
+            let bytes_per_row = self.bytes_per_row;
+
+            let row_count = if size > 0 && bytes_per_row > 0 {
+                let view_end_offset = min(self.view_offset + self.view_size, size);
+                let actual_view_size = view_end_offset - self.view_offset;
+                if actual_view_size == 0 {
+                    0
+                } else {
+                    1 + ((actual_view_size - 1) / bytes_per_row)
+                }
+            } else {
+                0
+            };
+
+            let start_row = std::cmp::min(row_count as i32, win_size.rows - BOTTOM_WIN_HEIGHT as i32);
+
+            for y in start_row..win_size.rows {
                 let _ = window.move_to((y, 0));
                 for _ in 0..win_size.columns {
                     let _ = window.put_char(' ');
