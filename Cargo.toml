@@ -2,9 +2,9 @@
 name = "hox"
 version = "1.0.0"
 authors = ["Mathias Panzenböck <grosser.meister.morti@gmx.net>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-clap = "2.33.3"
-libc = "0.2.85"
+clap = "3.1.18"
+libc = "0.2.126"
 pancurses-result = { version = "0.5.1", features = ["wide"] }

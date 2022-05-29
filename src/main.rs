@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with rust-hox.  If not, see <https://www.gnu.org/licenses/>.
 
-use clap::{Arg, App};
+use clap::{Arg, Command};
 
 mod result;
 mod hox;
@@ -29,35 +29,35 @@ use result::Result;
 use hox::{Hox, Endian, Theme};
 
 fn main() {
-    let args = App::new("Hox - Hex viewer written in Rust")
+    let args = Command::new("Hox - Hex viewer written in Rust")
         .version("1.0.0")
         .author("Mathias Panzenböck <grosser.meister.morti@gmx.net>")
 
-        .arg(Arg::with_name("endian")
+        .arg(Arg::new("endian")
             .long("endian")
-            .short("e")
+            .short('e')
             .default_value("little")
             .takes_value(true)
             .help("Display numbers as 'little' or 'big' endian."))
 
-        .arg(Arg::with_name("signed")
+        .arg(Arg::new("signed")
             .long("signed")
-            .short("s")
+            .short('s')
             .takes_value(false)
             .help("Display numbers as signed."))
 
-        .arg(Arg::with_name("dark-mode")
+        .arg(Arg::new("dark-mode")
             .long("dark-mode")
             .takes_value(false)
             .conflicts_with("light-mode")
             .help("Plesant dark mode. [default]"))
 
-        .arg(Arg::with_name("light-mode")
+        .arg(Arg::new("light-mode")
             .long("light-mode")
             .takes_value(false)
             .help("Burn your eyes in light mode."))
 
-        .arg(Arg::with_name("file")
+        .arg(Arg::new("file")
             .index(1)
             .required(true)
             .value_name("FILE"))
