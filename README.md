@@ -24,7 +24,7 @@ Hex editors/viewers I've tried and how they've failed:
   completely infeasible.
 * hexyl: Same as xxd, but with nicer output using Unicode and colors.
 
-General grieves with most hex GUI editors: They put offset and selection range
+General grieves with most GUI hex editors: They put offset and selection range
 in the status bar where you can't copy the value. Why? You can copy all visible
 text in an ncurses program.
 
