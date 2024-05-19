@@ -6,16 +6,23 @@ A very simple ncurses based hex viewer (read-only) written in Rust.
 Why? Because all hex editors I've tried didn't work. At least not for files
 larger than 2 GB.
 
-Hex editors I've tried and how they've failed:
+Hex editors/viewers I've tried and how they've failed:
 
 * Okteta: Can't open files > 2 GB
 * Bless: Can't decode 64 bit integers
 * ImHex binary: Linked against some random libraries that are not on my system.
-  Why is it not statically linked/shipped with those libraries?
+  Why is it not statically linked or shipped with those libraries?
 * ImHex compiled from source: Just crashes with "bad any_cast".
 * ghex: Loads the full file into memory! And then you can't scroll to the
   bottom, probably i32 overflow in the scroll logic (jumps back up to start
   when scrolling down to about 2 GB).
+* wxHexEditor: Can't deal with high DPI interfaces. If you increase the font
+  size parts of the interface are still tiny while other parts overflow their
+  alloted space and can't be seen anymore.
+* xxd: It just dumps the whole file as hex to stdout, it isn't an actual viewer
+  and lacks all the features I want. Using it for gigabyte sized files is
+  completely infeasible.
+* hexyl: Same as xxd, but with nicer output using Unicode and colors.
 
 General grieves with most hex GUI editors: They put offset and selection range
 in the status bar where you can't copy the value. Why? You can copy all visible
@@ -29,7 +36,7 @@ Features
 
 * Resizes to window.
 * Supports large files via `mmap()`.
-* Decodes bytes at curser as 8, 16, 32, and 64 bit integers, 32 and 64 bit
+* Decodes bytes at cursor as 8, 16, 32, and 64 bit integers, 32 and 64 bit
   floating point numbers. You can choose signed/unsinged, and little/big endian
   encoding.
 * Jump to user supplied aboslute or relative offset. For relative just type e.g.
