@@ -689,6 +689,8 @@ https://github.com/panzi/rust-hox
                 window.turn_on_attributes(attrs)?;
                 if byte == '\n' as u8 {
                     window.put_str("⏎")?;
+                } else if byte == 0 {
+                    window.put_str("⬦")?;
                 } else if byte == '\t' as u8 {
                     window.put_str("»")?;
                     // too small to discern:
