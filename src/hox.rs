@@ -691,6 +691,8 @@ https://github.com/panzi/rust-hox
                     window.put_str("⏎")?;
                 } else if byte == 0 {
                     window.put_str("⬦")?;
+                    // too small to read:
+                    // window.put_str("␀")?;
                 } else if byte == '\t' as u8 {
                     window.put_str("»")?;
                     // too small to discern:
