@@ -280,6 +280,12 @@ fn set_search_mask(view_mask: &mut [u8], view_offset: usize, mem: &[u8], needle:
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MessageStatus {
+    Info,
+    Error,
+}
+
 pub struct Hox<'a> {
     mmap: MMap<'a>,
     curses:   Curses,
@@ -304,7 +310,8 @@ pub struct Hox<'a> {
     file_input: FileInput,
     help_box: TextBox<'a>,
     help_shown: bool,
-    error: Option<String>,
+    message_status: Option<MessageStatus>,
+    message: String,
     search_widget: SearchWidget,
     search_data: Vec<u8>,
 }
@@ -414,6 +421,7 @@ f or F3 ... open search bar (and search for current selection)
 F ......... clear search
 n or P .... find next
 p or N .... find previous
+c ......... count needle in whole file (can be slow for large files!)
 # ......... select ASCII line under cursor
 
 Search
@@ -453,10 +461,64 @@ https://github.com/panzi/rust-hox
 © 2021 Mathias Panzenböck", 2, 1,
             ),
             help_shown: false,
-            error: None,
+            message_status: None,
+            message: String::new(),
             search_widget: SearchWidget::new(0),
             search_data: Vec::new(),
         })
+    }
+
+    pub fn set_message(&mut self, status: MessageStatus, message: impl AsRef<str>) {
+        self.message_status = Some(status);
+        self.message.clear();
+        let mut msg = message.as_ref();
+        self.message.reserve(msg.len());
+        while !msg.is_empty() {
+            let Some(index) = msg.find('\n') else {
+                self.message.push_str(msg);
+                break;
+            };
+
+            self.message.push_str(&msg[..index]);
+            self.message.push_str(" ");
+            msg = &msg[index + 1..];
+        }
+        self.need_redraw = true;
+    }
+
+    pub fn clear_message(&mut self) {
+        self.message_status = None;
+        self.message.clear();
+        self.need_redraw = true;
+    }
+
+    pub fn clear_error(&mut self) {
+        if self.message_status == Some(MessageStatus::Error) {
+            self.message_status = None;
+            self.message.clear();
+            self.need_redraw = true;
+        }
+    }
+
+    pub fn clear_info(&mut self) {
+        if self.message_status == Some(MessageStatus::Info) {
+            self.message_status = None;
+            self.message.clear();
+            self.need_redraw = true;
+        }
+    }
+
+    #[allow(unused)]
+    pub fn message_status(&self) -> Option<MessageStatus> {
+        self.message_status.clone()
+    }
+
+    #[allow(unused)]
+    pub fn message(&self) -> Option<&str> {
+        if self.message_status.is_none() {
+            return None;
+        }
+        Some(&self.message)
     }
 
     pub fn set_signed(&mut self, signed: bool) {
@@ -853,13 +915,23 @@ https://github.com/panzi/rust-hox
         let _ = put_label(window, buf);
 
         window.move_to((self.win_size.rows - 7, 0))?;
-        if let Some(error) = &self.error {
-            let mut error = error.replace('\n', " ");
-            error.insert_str(0, "Error: ");
-            let count = error.chars().count();
-            window.turn_on_attributes(ColorPair(PAIR_ERROR_MESSAGE))?;
-            let _ = window.put_str(error);
-            window.turn_off_attributes(ColorPair(PAIR_ERROR_MESSAGE))?;
+        if let Some(status) = &self.message_status {
+            let count = match status {
+                MessageStatus::Info => {
+                    let count = self.message.chars().count();
+                    let _ = window.put_str(&self.message);
+                    count
+                }
+                MessageStatus::Error => {
+                    let mut message = "Error: ".to_string();
+                    message.push_str(&self.message);
+                    let count = message.chars().count();
+                    window.turn_on_attributes(ColorPair(PAIR_ERROR_MESSAGE))?;
+                    let _ = window.put_str(message);
+                    window.turn_off_attributes(ColorPair(PAIR_ERROR_MESSAGE))?;
+                    count
+                }
+            };
             for _ in count..self.win_size.columns as usize {
                 window.put_char(' ')?;
             }
@@ -958,30 +1030,30 @@ https://github.com/panzi/rust-hox
                 if cursor < self.mmap.size() {
                     self.set_cursor(cursor);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyUp => {
                 if self.cursor >= self.bytes_per_row {
                     self.set_cursor(self.cursor - self.bytes_per_row);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyLeft => {
                 if self.cursor > 0 {
                     self.set_cursor(self.cursor - 1);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyRight => {
                 self.set_cursor(self.cursor + 1);
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyHome => {
                 if self.bytes_per_row > 0 {
                     let cursor = self.cursor - self.cursor % self.bytes_per_row;
                     self.set_cursor(cursor);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyEnd => {
                 let size = self.mmap.size();
@@ -989,56 +1061,56 @@ https://github.com/panzi/rust-hox
                     let cursor = min(self.cursor + self.bytes_per_row - self.cursor % self.bytes_per_row , size) - 1;
                     self.set_cursor(cursor);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::Character(CANCEL) | Input::Character('0') => { // Ctrl+Home
                 if self.cursor != 0 {
                     self.set_cursor(0);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('1') => {
                 self.goto_percent(10);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('2') => {
                 self.goto_percent(20);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('3') => {
                 self.goto_percent(30);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('4') => {
                 self.goto_percent(40);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('5') => {
                 self.goto_percent(50);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('6') => {
                 self.goto_percent(60);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('7') => {
                 self.goto_percent(70);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('8') => {
                 self.goto_percent(80);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('9') => {
                 self.goto_percent(90);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character(DEVICE_CONTROL3) | Input::Character('$') => { // Ctrl+End
                 let size = self.mmap.size();
                 if size > 0 {
                     self.set_cursor(size - 1);
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyPPage => {
                 if self.view_offset > 0 {
@@ -1053,7 +1125,7 @@ https://github.com/panzi/rust-hox
                     }
                     self.need_redraw = true;
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyNPage => {
                 let size = self.mmap.size();
@@ -1078,7 +1150,7 @@ https://github.com/panzi/rust-hox
                     }
                     self.need_redraw = true;
                 }
-                self.error = None;
+                self.clear_error();
             }
             Input::KeyResize => {
                 self.resize()?;
@@ -1089,12 +1161,12 @@ https://github.com/panzi/rust-hox
                     Endian::Big    => Endian::Little,
                     Endian::Little => Endian::Big,
                 });
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('i') => {
                 // toggle signedness
                 self.set_signed(!self.signed);
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('s') => {
                 // toggle select mode
@@ -1107,12 +1179,12 @@ https://github.com/panzi/rust-hox
                     self.view_mask_valid = false;
                 }
                 self.need_redraw = true;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('\n') if self.selecting => {
                 self.selecting = false;
                 self.need_redraw = true;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character(ESCAPE) if self.selecting => {
                 self.selecting       = false;
@@ -1120,7 +1192,7 @@ https://github.com/panzi/rust-hox
                 self.selection_end   = 0;
                 self.need_redraw     = true;
                 self.view_mask_valid = false;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('S') => {
                 // clear selection
@@ -1129,40 +1201,42 @@ https://github.com/panzi/rust-hox
                 self.selection_end   = 0;
                 self.need_redraw     = true;
                 self.view_mask_valid = false;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('#') => {
                 // select ASCII line under cursor
+                self.clear_error();
                 let mem = self.mmap.mem();
                 let size = mem.len();
-                self.error = None;
                 if size > 0 {
                     if !is_printable_ascii(mem[self.cursor]) {
                         self.selecting = false;
-                        self.error = Some("No ASCII character under cursor".to_owned());
+                        self.set_message(MessageStatus::Error, "No ASCII character under cursor");
                         let _ = self.curses.beep();
-                    }
-
-                    let mut start_index = self.cursor;
-                    while start_index > 0 {
-                        let index = start_index - 1;
-                        if !is_printable_ascii(mem[index]) {
-                            break;
+                        self.need_redraw     = true;
+                        self.view_mask_valid = false;
+                    } else {
+                        let mut start_index = self.cursor;
+                        while start_index > 0 {
+                            let index = start_index - 1;
+                            if !is_printable_ascii(mem[index]) {
+                                break;
+                            }
+                            start_index = index;
                         }
-                        start_index = index;
-                    }
 
-                    let mut end_index = self.cursor + 1;
-                    while end_index < size && is_printable_ascii(mem[end_index]) {
-                        end_index += 1;
-                    }
+                        let mut end_index = self.cursor + 1;
+                        while end_index < size && is_printable_ascii(mem[end_index]) {
+                            end_index += 1;
+                        }
 
-                    self.cursor          = end_index - 1;
-                    self.selection_start = start_index;
-                    self.selection_end   = end_index;
-                    self.selecting       = true;
-                    self.need_redraw     = true;
-                    self.view_mask_valid = false;
+                        self.cursor          = end_index - 1;
+                        self.selection_start = start_index;
+                        self.selection_end   = end_index;
+                        self.selecting       = true;
+                        self.need_redraw     = true;
+                        self.view_mask_valid = false;
+                    }
                     self.adjust_view();
                 }
             }
@@ -1174,7 +1248,7 @@ https://github.com/panzi/rust-hox
                 self.offset_input.set_value(self.cursor)?;
                 self.offset_input.focus()?;
                 self.need_redraw = true;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('+') => {
                 // goto relative offset
@@ -1184,7 +1258,7 @@ https://github.com/panzi/rust-hox
                 self.rel_offset_input.set_plus()?;
                 self.rel_offset_input.focus()?;
                 self.need_redraw = true;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('-') => {
                 // goto relative offset
@@ -1194,11 +1268,11 @@ https://github.com/panzi/rust-hox
                 self.rel_offset_input.set_minus()?;
                 self.rel_offset_input.focus()?;
                 self.need_redraw = true;
-                self.error = None;
+                self.clear_error();
             }
             Input::Character('f') | Input::Character('/') | Input::KeyF3 => {
                 // search
-                self.error = None;
+                self.clear_error();
                 self.selecting = false;
                 self.file_input.blur()?;
                 self.offset_input.blur()?;
@@ -1218,7 +1292,7 @@ https://github.com/panzi/rust-hox
             }
             Input::Character('F') => {
                 // clear search
-                self.error = None;
+                self.clear_message();
                 self.search_widget.blur()?;
                 self.search_data.clear();
                 self.view_mask_valid = false;
@@ -1230,10 +1304,13 @@ https://github.com/panzi/rust-hox
             Input::Character('p') | Input::Character('N') => {
                 self.find_previous();
             }
+            Input::Character('c') => {
+                self.count();
+            }
             Input::Character('w') => {
                 // write selection to file
                 if self.selection_start < self.selection_end {
-                    self.error = None;
+                self.clear_error();
                     self.selecting = false;
                     self.search_widget.blur()?;
                     self.offset_input.blur()?;
@@ -1241,7 +1318,7 @@ https://github.com/panzi/rust-hox
                     self.file_input.set_value("")?;
                     self.file_input.focus()?;
                 } else {
-                    self.error = Some("Nothing selected".to_owned());
+                    self.set_message(MessageStatus::Error, "Nothing selected");
                     let _ = self.curses.beep();
                 }
                 self.need_redraw = true;
@@ -1305,11 +1382,10 @@ https://github.com/panzi/rust-hox
                             }
                         }
                     }
-                } else if self.error.is_some() {
+                } else if self.message_status == Some(MessageStatus::Error) {
                     match input {
                         Input::Character(ch) if ch != 'h' => {
-                            self.error = None;
-                            self.need_redraw = true;
+                            self.clear_error();
                         }
                         _ => {
                             if !self.handle(input)? {
@@ -1336,12 +1412,12 @@ https://github.com/panzi/rust-hox
                                     let data = &self.mmap.mem()[self.selection_start..self.selection_end];
 
                                     if let Err(error) = file.write_all(data) {
-                                        self.error = Some(format!("{}: {:?}", error, path));
+                                        self.set_message(MessageStatus::Error, format!("{}: {:?}", error, path));
                                         let _ = self.curses.beep();
                                     }
                                 }
                                 Err(error) => {
-                                    self.error = Some(format!("{}: {:?}", error, path));
+                                    self.set_message(MessageStatus::Error, format!("{}: {:?}", error, path));
                                     let _ = self.curses.beep();
                                 }
                             }
@@ -1371,6 +1447,9 @@ https://github.com/panzi/rust-hox
                             let _ = self.curses.beep();
                         }
                         WidgetResult::Ignore => {}
+                    }
+                    if !self.search_widget.has_focus() {
+                        self.clear_info();
                     }
                 } else if self.offset_input.has_focus() {
                     match self.offset_input.handle(input)? {
@@ -1410,7 +1489,7 @@ https://github.com/panzi/rust-hox
                                     cursor -= -value as usize;
                                 }
                             } else if value as usize > std::usize::MAX - cursor {
-                                cursor = cursor;
+                                cursor = std::usize::MAX;
                             } else {
                                 cursor += value as usize;
                             }
@@ -1445,13 +1524,13 @@ https://github.com/panzi/rust-hox
                 let end_offset = size - search_size + 1;
                 for offset in start_offset..end_offset {
                     if &mem[offset..offset + search_size] == search_data {
-                        self.error = None;
+                        self.clear_error();
                         self.set_cursor(offset);
                         return true;
                     }
                 }
             }
-            self.error = Some("Pattern not found searching forward".to_owned());
+            self.set_message(MessageStatus::Error, "Pattern not found searching forward");
             let _ = self.curses.beep();
         }
 
@@ -1470,7 +1549,7 @@ https://github.com/panzi/rust-hox
                 let mut offset = start_offset;
                 loop {
                     if &mem[offset..offset + search_size] == search_data {
-                        self.error = None;
+                        self.clear_error();
                         self.set_cursor(offset);
                         return true;
                     }
@@ -1480,11 +1559,32 @@ https://github.com/panzi/rust-hox
                     offset -= 1;
                 }
             }
-            self.error = Some("Pattern not found searching backward".to_owned());
+            self.set_message(MessageStatus::Error, "Pattern not found searching backward");
             let _ = self.curses.beep();
         }
 
         false
+    }
+
+    fn count(&mut self) -> usize {
+        let search_data = &self.search_data[..];
+        let search_size = search_data.len();
+        let mut count = 0;
+        if search_size > 0 {
+            let mut mem = self.mmap.mem();
+            while !mem.is_empty() {
+                if &mem[..search_size] == search_data {
+                    count += 1;
+                    mem = &mem[search_size..];
+                } else {
+                    mem = &mem[1..];
+                }
+            }
+        }
+
+        self.set_message(MessageStatus::Info, format!("Found {count} times"));
+
+        count
     }
 
     fn clear_bottom_bar(&mut self) {
