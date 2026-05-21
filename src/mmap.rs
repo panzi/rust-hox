@@ -27,6 +27,14 @@ impl<'a> MMap<'a> {
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
 
+        if size == 0 {
+            return Ok(Self {
+                ptr: std::ptr::null_mut(),
+                size,
+                phantom: std::marker::PhantomData,
+            })
+        }
+
         let fd = file.as_raw_fd();
 
         unsafe {
@@ -51,6 +59,10 @@ impl<'a> MMap<'a> {
 
     #[inline]
     pub fn mem(&self) -> &[u8] {
+        if self.ptr.is_null() {
+            return b"";
+        }
+
         unsafe {
             std::ptr::slice_from_raw_parts::<u8>(self.ptr.cast(), self.size).as_ref().unwrap()
         }
@@ -58,6 +70,10 @@ impl<'a> MMap<'a> {
 
     #[allow(dead_code)]
     pub fn close(self) -> std::io::Result<()> {
+        if self.ptr.is_null() {
+            return Ok(());
+        }
+
         let result = unsafe {
             libc::munmap(self.ptr, self.size as libc::size_t)
         };
@@ -79,6 +95,10 @@ impl<'a> AsRef<[u8]> for MMap<'a> {
 
 impl Drop for MMap<'_> {
     fn drop(&mut self) {
+        if self.ptr.is_null() {
+            return;
+        }
+
         let result = unsafe {
             libc::munmap(self.ptr, self.size as libc::size_t) 
         };
