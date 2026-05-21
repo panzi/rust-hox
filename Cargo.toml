@@ -1,6 +1,6 @@
 [package]
 name = "hox"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Mathias Panzenböck <grosser.meister.morti@gmx.net>"]
 edition = "2021"
 
